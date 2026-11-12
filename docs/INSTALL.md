@@ -10,7 +10,16 @@ This guide takes about 2 minutes. It works on macOS, Windows and Linux.
 
 ## 1. Install the extension
 
-### Option A: one command (recommended)
+### Option A: VS Code Marketplace (recommended)
+
+1. Open the **Extensions** view (**Cmd/Ctrl+Shift+X**).
+2. Search **PR Status Panel** (publisher **mtorres11**) and click **Install**.
+
+Or from a terminal: `code --install-extension mtorres11.pr-status-panel`
+
+Marketplace installs update automatically.
+
+### Option B: GitHub Releases, one command
 
 macOS / Linux (bash, zsh or fish):
 
@@ -30,7 +39,7 @@ code --install-extension "$env:TEMP\pr-status-panel.vsix" --force
 > **Shell Command: Install 'code' command in PATH** (macOS), or reinstall VS Code with
 > "Add to PATH" checked (Windows). Then open a new terminal.
 
-### Option B: by hand (no command line)
+### Option C: GitHub Releases, by hand (no command line)
 
 1. Open the [latest release](https://github.com/mtorres11/pr-status-panel/releases/latest)
    and download **`pr-status-panel.vsix`**.
@@ -91,7 +100,7 @@ Use **Account → ＋ Add another account…** in the panel. Every account you s
 
 ## Updating
 
-Run the same install command again (Option A), or install the newer `.vsix` by hand. Your settings are kept.
+Marketplace installs update automatically. For GitHub Releases installs, run the same command again (Option B) or install the newer `.vsix` by hand. Your settings are kept.
 
 ## Uninstalling
 

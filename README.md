@@ -9,14 +9,21 @@ Created by **Marco Torres C** · <https://github.com/mtorres11/pr-status-panel>
 
 Full step-by-step guide (macOS, Windows, Linux, troubleshooting): **[docs/INSTALL.md](docs/INSTALL.md)**.
 
-**One command** (needs the [GitHub CLI](https://cli.github.com/); also works for updates):
+**From the VS Code Marketplace** (recommended, updates automatically): open the Extensions view
+(**Cmd/Ctrl+Shift+X**), search **PR Status Panel**, click **Install**. Or from a terminal:
+
+```
+code --install-extension mtorres11.pr-status-panel
+```
+
+**From GitHub Releases** with one command (needs the [GitHub CLI](https://cli.github.com/)):
 
 ```
 gh release download --repo mtorres11/pr-status-panel --pattern '*.vsix' --dir /tmp --clobber
 code --install-extension /tmp/pr-status-panel.vsix --force
 ```
 
-**Or by hand:** download `pr-status-panel.vsix` from the [latest release](https://github.com/mtorres11/pr-status-panel/releases/latest),
+**Or by hand from GitHub:** download `pr-status-panel.vsix` from the [latest release](https://github.com/mtorres11/pr-status-panel/releases/latest),
 then in VS Code: Extensions view → `…` → **Install from VSIX…**.
 
 Then:
@@ -97,3 +104,5 @@ See [SECURITY.md](SECURITY.md) for how to report a vulnerability, and [docs/SECU
 ## License
 
 [MIT](LICENSE) © 2026 Marco Torres C
+
+No telemetry: the extension collects no usage data. Install counts are only what the Marketplace and GitHub Releases show.

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Version assessed | 0.5.0 |
+| Version assessed | 0.6.0 |
 | Date | 2026-11-12 |
 | Scope | Extension source (`src/`, `media/`), manifest, build/release pipeline, dependencies, repository controls |
 | Result | No open high or medium findings. 0 known dependency vulnerabilities. No runtime dependencies. |
@@ -40,7 +40,7 @@ and can re-run failed GitHub Actions jobs after explicit confirmation.
 | UI selections (account, filters) | VS Code `globalState` on the local machine | No |
 | Settings (favorites, Jira site, …) | User settings (synced only if the user enabled Settings Sync) | Only via the user's own Settings Sync |
 | Clipboard | PR titles and URLs, written only when the user clicks **Copy PR links** or a ⧉ copy icon (text built in the extension host from GitHub data; https URLs only) | Only where the user pastes it |
-| Telemetry / analytics | None collected | No |
+| Telemetry / analytics | None collected, by design (no tracking will be added) | No |
 
 **Network destinations:** `api.github.com` (GraphQL + REST), or `https://<github-enterprise.uri>/api/...` when configured.
 Nothing else. The Jira site is only opened in the user's browser and is never called by the extension.
@@ -92,6 +92,7 @@ authentication; the extension never sees a password and never stores a token.
 - Workflows default to `contents: read`; only the release job gets `contents: write` + `id-token: write` + `attestations: write`.
 - `actions/checkout` runs with `persist-credentials: false`.
 - Each release carries a signed **build-provenance attestation** (Sigstore) and `SHA256SUMS.txt`, so users can verify the file with `gh attestation verify`.
+- **VS Code Marketplace publishing** happens in a separate job that downloads the released file, **verifies its attestation**, and only then publishes that exact file. The Marketplace token (`VSCE_PAT`, scope *Marketplace: Manage* only) is stored as a secret of the protected `marketplace` environment, which requires the owner's approval and only runs for `v*` tags. The job can be switched off with the `MARKETPLACE_PUBLISH` repository variable.
 
 ## 7. Repository controls
 
@@ -106,7 +107,7 @@ authentication; the extension never sees a password and never stores a token.
 
 - **The `repo` scope is broad.** GitHub OAuth has no narrower read-only scope for private repositories. Mitigation: the token is VS Code's and is used only for the calls listed above. Users can revoke access from the VS Code Accounts menu or GitHub settings.
 - **Check-run links come from third-party CI apps** and may point to any https site. They are opened in the browser only when the user clicks them.
-- **No automatic updates.** Users must reinstall to get fixes. Releases are announced in the repository.
+- **Updates:** Marketplace installs update automatically. GitHub Releases installs must be reinstalled to get fixes.
 - **User-supplied regexes** in user settings are trusted as the user's own input; the length cap limits, but cannot fully remove, backtracking cost.
 
 ## 9. How to re-run this assessment

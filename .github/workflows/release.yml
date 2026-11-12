@@ -33,3 +33,36 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" pr-status-panel.vsix SHA256SUMS.txt --generate-notes --verify-tag
+
+  # Publishes the exact attested .vsix to the VS Code Marketplace.
+  # Runs only when the repo variable MARKETPLACE_PUBLISH is "true", in the protected
+  # "marketplace" environment (owner approval required, v* tags only), which holds VSCE_PAT.
+  marketplace:
+    needs: release
+    if: vars.MARKETPLACE_PUBLISH == 'true'
+    runs-on: ubuntu-latest
+    environment: marketplace
+    permissions:
+      contents: read
+      attestations: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Download the released file
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "$GITHUB_REF_NAME" --pattern pr-status-panel.vsix
+      - name: Verify its build provenance before publishing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh attestation verify pr-status-panel.vsix --repo "$GITHUB_REPOSITORY"
+      - name: Publish to the VS Code Marketplace
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx vsce publish --packagePath pr-status-panel.vsix
