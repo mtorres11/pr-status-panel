@@ -113,6 +113,9 @@ select, .combo-btn, .combo-search {
 .ck.failed span:first-child { color: var(--bad); }
 .ck.running span:first-child { color: var(--run); }
 .ck.pending span:first-child { color: var(--muted); }
+.ck.passed span:first-child { color: var(--ok); }
+.ck-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ck-text .snippet { color: var(--muted); }
 
 /* compact */
 .card.compact { display: grid; grid-template-columns: auto auto 1fr 96px; gap: 6px; align-items: center; padding: 5px 6px; cursor: pointer; }

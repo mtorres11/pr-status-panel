@@ -115,13 +115,31 @@ export interface RawPullRequest {
     } | null;
   } | null;
   latestOpinionatedReviews: {
-    nodes: { state: string; author: RawActor | null }[];
+    nodes: { state: string; url?: string | null; author: RawActor | null }[];
+  };
+  /** Reviewers (users or teams) asked to review who have not reviewed yet. */
+  reviewRequests?: {
+    nodes: {
+      requestedReviewer:
+        | { __typename: "User" | "Mannequin" | "Bot"; login: string }
+        | { __typename: "Team"; name: string }
+        | null;
+    }[];
   };
   reviewThreads: {
     totalCount: number;
     nodes: {
       isResolved: boolean;
-      comments: { nodes: { author: RawActor | null }[] };
+      isOutdated?: boolean;
+      path?: string | null;
+      line?: number | null;
+      comments: {
+        nodes: {
+          author: RawActor | null;
+          bodyText?: string | null;
+          url?: string | null;
+        }[];
+      };
     }[];
   };
   commits: {
@@ -142,10 +160,20 @@ const PR_FIELDS = `
     repository { nameWithOwner }
     author { __typename login }
     baseRef { branchProtectionRule { requiredApprovingReviewCount } }
-    latestOpinionatedReviews(first: 30, writersOnly: true) { nodes { state author { __typename login } } }
+    latestOpinionatedReviews(first: 30, writersOnly: true) { nodes { state url author { __typename login } } }
+    reviewRequests(first: 20) { nodes { requestedReviewer {
+      __typename
+      ... on User { login }
+      ... on Mannequin { login }
+      ... on Bot { login }
+      ... on Team { name }
+    } } }
     reviewThreads(first: 100) {
       totalCount
-      nodes { isResolved comments(first: 1) { nodes { author { __typename login } } } }
+      nodes {
+        isResolved isOutdated path line
+        comments(first: 1) { nodes { author { __typename login } bodyText url } }
+      }
     }
     commits(last: 1) {
       nodes { commit { statusCheckRollup {
@@ -249,7 +277,7 @@ export async function getRulesetRequiredApprovals(
     const res = await fetch(
       `${api.restBase}/repos/${repoPath(repo)}/rules/branches/${encodeURIComponent(branch)}`,
       {
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         headers: {
           Authorization: `Bearer ${api.token}`,
           Accept: "application/vnd.github+json",
@@ -285,7 +313,7 @@ export async function rerunWorkflowRun(
   const res = await fetch(
     `${api.restBase}/repos/${repoPath(repo)}/actions/runs/${encodeURIComponent(String(runId))}/${path}`,
     {
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       method: "POST",
       headers: {
         Authorization: `Bearer ${api.token}`,

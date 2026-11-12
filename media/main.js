@@ -262,7 +262,14 @@
     }
 
     const problems = pr.checks.items.filter((i) => i.state === 'failed' || i.state === 'running' || i.state === 'pending');
-    const isOpen = expanded.has(pr.id);
+    const a = pr.approvals;
+    const missing = Math.max(a.required - a.approved, 0);
+    const approvalLabel = [
+      missing ? `${missing} approval(s) missing` : '',
+      a.changesRequested ? `${a.changesRequested} requested changes` : '',
+    ].filter(Boolean).join(', ')
+      // nothing missing: still list who approved, so the section is there to check
+      || (a.items.length ? `${a.approved} approval(s)` : '');
     return h('div', { class: `card ${st.cls}` },
       h('div', { class: 'card-top' },
         h('span', { class: 'dot', title: st.label }, st.icon), ticket,
@@ -276,18 +283,45 @@
       h('div', { class: 'url muted' }, pr.url.replace(/^https?:\/\//, '')),
       boxes(pr, false),
       pr.mergeable === 'CONFLICTING' ? h('div', { class: 'warn' }, '⚠ Merge conflicts') : null,
-      problems.length
-        ? h('div', { class: 'checks-toggle', onclick: () => { isOpen ? expanded.delete(pr.id) : expanded.add(pr.id); renderList(); } },
-            `${isOpen ? '▾' : '▸'} ${problems.length} check(s) not passing`)
-        : null,
-      isOpen
-        ? h('ul', { class: 'checks' }, ...problems.map((c) =>
-            h('li', { class: `ck ${c.state}` },
-              h('span', null, c.state === 'failed' ? '✖' : c.state === 'running' ? '◌' : '○'),
-              c.url ? h('a', { href: '#', onclick: (e) => { e.preventDefault(); open(c.url); } }, c.name) : h('span', null, c.name))))
-        : null,
+      section(pr, 'checks', problems.length ? `${problems.length} check(s) not passing` : '', problems, (c) =>
+        h('li', { class: `ck ${c.state}` },
+          h('span', null, c.state === 'failed' ? '✖' : c.state === 'running' ? '◌' : '○'),
+          link(c.name, c.url))),
+      section(pr, 'comments', pr.threads.items.length ? `${pr.threads.items.length} comment(s) unresolved` : '', pr.threads.items, (t) =>
+        h('li', { class: 'ck running', title: t.snippet },
+          h('span', null, '●'),
+          h('span', { class: 'ck-text' },
+            link(t.author, t.url),
+            t.where ? h('span', { class: 'muted' }, ` · ${t.where}`) : null,
+            t.outdated ? h('span', { class: 'muted' }, ' · outdated') : null,
+            t.snippet ? h('span', { class: 'snippet' }, ` — ${t.snippet}`) : null))),
+      section(pr, 'approvals', approvalLabel, a.items, (r) =>
+        h('li', { class: `ck ${r.state === 'changes' ? 'failed' : r.state === 'requested' ? 'pending' : 'passed'}` },
+          h('span', null, r.state === 'changes' ? '✖' : r.state === 'requested' ? '○' : '✔'),
+          h('span', { class: 'ck-text' },
+            link(r.name, r.url),
+            h('span', { class: 'muted' }, r.state === 'changes' ? ' · requested changes' : r.state === 'requested' ? ' · review requested' : ' · approved')))),
       pr.author !== data.viewerLogin ? h('div', { class: 'muted small' }, `by ${pr.author}`) : null,
     );
+  }
+
+  /** Text that opens url (https only, checked again by the extension); plain text when there is no url. */
+  function link(text, url) {
+    return url ? h('a', { href: '#', onclick: (e) => { e.preventDefault(); open(url); } }, text) : h('span', null, text);
+  }
+
+  /**
+   * A collapsible list under the card: "▸ <label>", and the items when expanded.
+   * Each section of each PR opens on its own. Nothing is drawn when label is empty.
+   */
+  function section(pr, kind, label, items, renderItem) {
+    if (!label) return null;
+    const key = `${pr.id}:${kind}`;
+    const isOpen = expanded.has(key);
+    return h('div', { class: `section ${kind}` },
+      h('div', { class: 'checks-toggle', onclick: () => { isOpen ? expanded.delete(key) : expanded.add(key); renderList(); } },
+        `${isOpen ? '▾' : '▸'} ${label}`),
+      isOpen && items.length ? h('ul', { class: 'checks' }, ...items.map(renderItem)) : null);
   }
 
   /** ⚙ button + per-PR options menu. Add future per-PR options here. */

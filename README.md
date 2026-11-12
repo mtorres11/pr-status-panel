@@ -66,6 +66,14 @@ CodeBuild) can be re-triggered by re-running the workflow behind it. Each re-run
 
 The **Comments** bar shows resolved review threads in green and unresolved ones in yellow.
 
+Under each card, collapsible lists show what needs attention. Each opens on its own:
+
+- **N check(s) not passing**: failed, running and pending checks, each linking to its run.
+- **N comment(s) unresolved**: each open review thread with its author, file and line, and the start of the comment,
+  linking to the thread.
+- **N approval(s) missing / requested changes**: reviewers who requested changes, reviewers still asked to review,
+  and who approved. When nothing is missing it reads **N approval(s)** and lists the approvers.
+
 ## Settings (gear icon)
 
 | Setting | Default | Notes |

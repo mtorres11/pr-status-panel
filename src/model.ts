@@ -12,6 +12,26 @@ export interface CheckItem {
   runId?: number;
 }
 
+/** An unresolved review thread, for the expandable list under the card. */
+export interface ThreadItem {
+  author: string;
+  /** File and line the thread is on, e.g. "src/a.ts:12"; empty for a file-level thread. */
+  where: string;
+  /** Start of the first comment, plain text, cut to SNIPPET_MAX characters. */
+  snippet: string;
+  url?: string;
+  outdated: boolean;
+}
+
+/** One reviewer, for the expandable approvals list. */
+export interface ReviewerItem {
+  name: string;
+  state: "changes" | "requested" | "approved";
+  url?: string;
+}
+
+const SNIPPET_MAX = 120;
+
 export interface PrView {
   id: string;
   repo: string;
@@ -35,8 +55,13 @@ export interface PrView {
     total: number;
     items: CheckItem[];
   };
-  threads: { resolved: number; total: number };
-  approvals: { approved: number; required: number; changesRequested: number };
+  threads: { resolved: number; total: number; items: ThreadItem[] };
+  approvals: {
+    approved: number;
+    required: number;
+    changesRequested: number;
+    items: ReviewerItem[];
+  };
   mergeable: string;
   rerun: {
     /** Workflow runs with at least one failed check. */
@@ -89,7 +114,8 @@ export function toView(
       pr.title.slice(0, MAX_REGEX_INPUT).match(ticketRe)?.[0])
     : undefined;
   const jira = jiraOrigin(opts.jiraBaseUrl);
-  const ticketUrl = ticket && jira ? `${jira}/browse/${encodeURIComponent(ticket)}` : undefined;
+  const ticketUrl =
+    ticket && jira ? `${jira}/browse/${encodeURIComponent(ticket)}` : undefined;
 
   // Checks
   const ignored = opts.ignoredChecks
@@ -151,15 +177,56 @@ export function toView(
   const threads = {
     resolved: threadNodes.filter((t) => t.isResolved).length,
     total: threadNodes.length,
+    items: threadNodes
+      .filter((t) => !t.isResolved)
+      .map((t): ThreadItem => {
+        const first = t.comments.nodes[0];
+        const text = (first?.bodyText ?? "").replace(/\s+/g, " ").trim();
+        return {
+          author: first?.author?.login ?? "ghost",
+          where: t.path ? (t.line ? `${t.path}:${t.line}` : t.path) : "",
+          snippet:
+            text.length > SNIPPET_MAX
+              ? `${text.slice(0, SNIPPET_MAX - 1)}…`
+              : text,
+          url: first?.url ?? undefined,
+          outdated: t.isOutdated === true,
+        };
+      }),
   };
 
-  // Approvals (latest opinionated review per writer)
+  // Approvals (latest opinionated review per writer), plus reviewers still asked to review
   const reviews = pr.latestOpinionatedReviews.nodes;
+  const reviewItem = (
+    r: (typeof reviews)[number],
+    state: ReviewerItem["state"],
+  ): ReviewerItem => ({
+    name: r.author?.login ?? "ghost",
+    state,
+    url: r.url ?? undefined,
+  });
+  const requested = (pr.reviewRequests?.nodes ?? [])
+    .map((n) => n.requestedReviewer)
+    .filter((r): r is NonNullable<typeof r> => !!r)
+    .map((r): ReviewerItem => ({
+      name: r.__typename === "Team" ? `team ${r.name}` : r.login,
+      state: "requested",
+    }));
   const approvals = {
     approved: reviews.filter((r) => r.state === "APPROVED").length,
     required: requiredApprovals,
     changesRequested: reviews.filter((r) => r.state === "CHANGES_REQUESTED")
       .length,
+    // changes requested first, then still to review, then approved
+    items: [
+      ...reviews
+        .filter((r) => r.state === "CHANGES_REQUESTED")
+        .map((r) => reviewItem(r, "changes")),
+      ...requested,
+      ...reviews
+        .filter((r) => r.state === "APPROVED")
+        .map((r) => reviewItem(r, "approved")),
+    ],
   };
 
   // Overall status
