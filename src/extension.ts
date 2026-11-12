@@ -353,7 +353,10 @@ class PrStatusViewProvider
    * The webview sends PR ids in display order; only known PRs that still need
    * approval are used, and the text is built here from our own data.
    */
-  private async copyLinks(rawIds: unknown, withDescription: boolean): Promise<void> {
+  private async copyLinks(
+    rawIds: unknown,
+    withDescription: boolean,
+  ): Promise<void> {
     const ids = Array.isArray(rawIds)
       ? rawIds.filter((v): v is string => typeof v === "string")
       : [];
@@ -387,12 +390,13 @@ class PrStatusViewProvider
   private async rerun(prId: string, failedOnly: boolean): Promise<void> {
     const pr = this.prs.find((p) => p.id === prId);
     if (!pr) return;
-    // Only offered when something failed (the buttons are disabled otherwise).
-    if (pr.checks.failed === 0) return;
+    // "failed" needs a failed Actions run; "all" works for any PR with Actions runs, failing or not.
     const runIds = failedOnly ? pr.rerun.failedRunIds : pr.rerun.allRunIds;
     if (!runIds.length) {
       vscode.window.showWarningMessage(
-        `PR Status: the failing checks on #${pr.number} are not GitHub Actions workflows, so they can't be re-run from here.`,
+        failedOnly
+          ? `PR Status: none of the failing checks on #${pr.number} are GitHub Actions workflows yet. Try Re-run all checks.`
+          : `PR Status: no GitHub Actions workflows are behind the checks on #${pr.number}, so nothing can be re-run from here.`,
       );
       return;
     }

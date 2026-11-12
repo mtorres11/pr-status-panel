@@ -60,7 +60,11 @@ The gear at the top right of each card opens a menu:
 - **Re-run failed checks**: re-runs only the failed jobs of the GitHub Actions runs behind the PR.
 - **Re-run all checks**: re-runs every job in those runs.
 
-Both are disabled when no check has failed, or when the failing checks are not GitHub Actions workflows. Each re-run asks for confirmation first.
+**Re-run failed checks** is enabled when at least one failed check is a GitHub Actions job. **Re-run all checks** is
+enabled whenever the PR has GitHub Actions runs, failing or not, so a failure from another system (for example AWS
+CodeBuild) can be re-triggered by re-running the workflow behind it. Each re-run asks for confirmation first.
+
+The **Comments** bar shows resolved review threads in green and unresolved ones in yellow.
 
 ## Settings (gear icon)
 

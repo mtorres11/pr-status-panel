@@ -221,7 +221,9 @@
       box('Checks', c.total ? `${c.passed + c.skipped}/${c.total}` : '—',
         bar([{ n: c.passed + c.skipped, cls: 'ok' }, { n: c.failed, cls: 'bad' }, { n: c.running, cls: 'run' }], c.total), checkTitle),
       box('Comments', t.total ? `${t.resolved}/${t.total}` : '—',
-        bar([{ n: t.resolved, cls: 'ok' }], t.total), t.total ? `${t.resolved} of ${t.total} review comments resolved` : 'No review comments'),
+        // unresolved threads get their own yellow segment, like running checks, instead of falling into the gray rest
+        bar([{ n: t.resolved, cls: 'ok' }, { n: t.total - t.resolved, cls: 'run' }], t.total),
+        t.total ? `${t.resolved} of ${t.total} review comments resolved, ${t.total - t.resolved} open` : 'No review comments'),
       box('Approvals', `${a.approved}/${a.required}`,
         bar([{ n: Math.min(a.approved, Math.max(a.required, 1)), cls: 'ok' }, { n: a.changesRequested, cls: 'bad' }], Math.max(a.required, a.approved + a.changesRequested, 1)),
         `${a.approved} approval(s) of ${a.required} required${a.changesRequested ? `, ${a.changesRequested} requested changes` : ''}`));
@@ -292,15 +294,19 @@
   function prMenu(pr) {
     const isOpen = openMenuId === pr.id;
     const failed = pr.checks.failed;
-    const noActions = failed > 0 && pr.rerun.failedRunIds.length === 0;
-    const disabled = failed === 0 || noActions;
-    const reason = failed === 0
-      ? 'No failed checks: nothing to re-run'
-      : noActions ? 'The failing checks are not GitHub Actions workflows' : undefined;
-    const item = (label, mode, title) => h('button', {
+    // Each button has its own rule: "failed" needs a failed Actions run, "all" only needs any Actions run.
+    // A failing non-Actions check (e.g. AWS CodeBuild) must not disable "all", which is how it gets re-triggered.
+    const failedReason = pr.rerun.failedRunIds.length > 0
+      ? undefined
+      : failed === 0
+        ? 'No failed checks to re-run'
+        : 'The failing checks are not GitHub Actions workflows yet; use Re-run all checks';
+    const allReason = pr.rerun.allRunIds.length > 0 ? undefined : 'No GitHub Actions workflows behind these checks';
+    const reason = (failed > 0 && failedReason) || allReason;
+    const item = (label, mode, title, why) => h('button', {
       class: 'pr-menu-item',
-      disabled,
-      title: reason || title,
+      disabled: why !== undefined,
+      title: why || title,
       onclick: (e) => {
         e.stopPropagation();
         openMenuId = null;
@@ -319,8 +325,8 @@
       }, '⚙'),
       isOpen
         ? h('div', { class: 'pr-menu', role: 'menu' },
-            item(`↻ Re-run failed checks${failed ? ` (${failed})` : ''}`, 'failed', 'Re-run only the failed jobs'),
-            item('↻ Re-run all checks', 'all', 'Re-run every job in the workflow runs for this PR'),
+            item(`↻ Re-run failed checks${failed ? ` (${failed})` : ''}`, 'failed', 'Re-run only the failed jobs', failedReason),
+            item('↻ Re-run all checks', 'all', 'Re-run every job in the workflow runs for this PR', allReason),
             reason ? h('div', { class: 'pr-menu-note' }, reason) : null)
         : null);
   }

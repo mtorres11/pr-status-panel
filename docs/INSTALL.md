@@ -120,5 +120,5 @@ To also revoke its GitHub access: VS Code Accounts menu → your GitHub account 
 | A repo or PR is missing | Your organization may require SSO authorization: open github.com → *Settings → Applications → Authorized OAuth Apps → Visual Studio Code* and **Grant** access to the org. Also check `prStatus.organizations`. |
 | Approvals show the wrong "required" number | Set `prStatus.requiredApprovalsPerRepo`, e.g. `{"my-org/my-repo": 2}`. |
 | Ticket key not detected | Adjust `prStatus.ticketPattern` (regex matched on the branch name, then the title). |
-| Re-run buttons are greyed out | They only enable when a check has failed and it comes from GitHub Actions. |
+| Re-run buttons are greyed out | **Re-run failed** needs a failed GitHub Actions check; **Re-run all** needs the PR to have GitHub Actions runs. Hover a button for the reason. |
 | Anything else | Open an [issue](https://github.com/mtorres11/pr-status-panel/issues). Security problems: see [SECURITY.md](../SECURITY.md). |
