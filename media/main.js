@@ -227,6 +227,20 @@
         `${a.approved} approval(s) of ${a.required} required${a.changesRequested ? `, ${a.changesRequested} requested changes` : ''}`));
   }
 
+  /** Small copy icon: the extension copies the URL from its own data; shows ✓ briefly. */
+  function copyIcon(pr, which, label) {
+    const btn = h('button', {
+      class: 'copy-icon', title: `Copy ${label}`, 'aria-label': `Copy ${label}`,
+      onclick: (e) => {
+        e.preventDefault(); e.stopPropagation();
+        send({ type: 'copyUrl', prId: pr.id, which });
+        btn.textContent = '✓'; btn.classList.add('done');
+        setTimeout(() => { btn.textContent = '⧉'; btn.classList.remove('done'); }, 1500);
+      },
+    }, '⧉');
+    return btn;
+  }
+
   function cardEl(pr) {
     const st = STATUS[pr.status];
     const repoName = pr.repo.split('/')[1];
@@ -250,10 +264,13 @@
     return h('div', { class: `card ${st.cls}` },
       h('div', { class: 'card-top' },
         h('span', { class: 'dot', title: st.label }, st.icon), ticket,
+        pr.ticketUrl ? copyIcon(pr, 'ticket', `${pr.ticket} link`) : null,
         h('span', { class: 'repo', title: pr.repo }, repoName),
         prMenu(pr)),
-      h('a', { class: 'pr-link', href: '#', title: pr.url, onclick: (e) => { e.preventDefault(); open(pr.url); } },
-        `#${pr.number} ${pr.title}`, ' ↗'),
+      h('div', { class: 'pr-row' },
+        h('a', { class: 'pr-link', href: '#', title: pr.url, onclick: (e) => { e.preventDefault(); open(pr.url); } },
+          `#${pr.number} ${pr.title}`, ' ↗'),
+        copyIcon(pr, 'pr', 'PR link')),
       h('div', { class: 'url muted' }, pr.url.replace(/^https?:\/\//, '')),
       boxes(pr, false),
       pr.mergeable === 'CONFLICTING' ? h('div', { class: 'warn' }, '⚠ Merge conflicts') : null,

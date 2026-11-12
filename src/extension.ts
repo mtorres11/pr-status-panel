@@ -227,6 +227,18 @@ class PrStatusViewProvider
         this.refresh(true);
         break;
       }
+      case "copyUrl": {
+        // URL comes from our own PR data, never from the webview message.
+        const pr = this.prs.find((p) => p.id === m.prId);
+        const url = m.which === "ticket" ? pr?.ticketUrl : pr?.url;
+        if (!pr || !isHttpsUrl(url)) return;
+        await vscode.env.clipboard.writeText(url);
+        vscode.window.setStatusBarMessage(
+          `$(check) Copied ${m.which === "ticket" ? `${pr.ticket} link` : `PR #${pr.number} link`}`,
+          2500,
+        );
+        break;
+      }
       case "copyLinks":
         await this.copyLinks(m.ids, m.withDescription === true);
         break;

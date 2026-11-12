@@ -42,6 +42,10 @@ gh attestation verify /tmp/pr-status-panel.vsix --repo mtorres11/pr-status-panel
 | Show | Authored / Review requested / Assigned / All. Drafts on/off. Sort by attention, last updated or ticket. |
 | Share | **Copy PR links** copies the links of the listed PRs that still need approval (skips fully approved PRs and PRs in the merge queue), in list order. Tick **Add description** to put each PR's title above its link, with a blank line between PRs. |
 
+## Copy links
+
+Each card has a **⧉** copy icon next to the PR title (copies the PR URL) and, when a Jira site is configured, next to the ticket key (copies the ticket URL). The icon turns into ✓ for a moment after copying.
+
 ## Per-PR options (⚙)
 
 The gear at the top right of each card opens a menu:

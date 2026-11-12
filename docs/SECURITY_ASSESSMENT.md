@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Version assessed | 0.4.0 |
+| Version assessed | 0.5.0 |
 | Date | 2026-11-12 |
 | Scope | Extension source (`src/`, `media/`), manifest, build/release pipeline, dependencies, repository controls |
 | Result | No open high or medium findings. 0 known dependency vulnerabilities. No runtime dependencies. |
@@ -39,7 +39,7 @@ and can re-run failed GitHub Actions jobs after explicit confirmation.
 | PR/check/review data | Extension memory | No |
 | UI selections (account, filters) | VS Code `globalState` on the local machine | No |
 | Settings (favorites, Jira site, …) | User settings (synced only if the user enabled Settings Sync) | Only via the user's own Settings Sync |
-| Clipboard | PR titles and URLs, written only when the user clicks **Copy PR links** (text built in the extension host from GitHub data; https URLs only) | Only where the user pastes it |
+| Clipboard | PR titles and URLs, written only when the user clicks **Copy PR links** or a ⧉ copy icon (text built in the extension host from GitHub data; https URLs only) | Only where the user pastes it |
 | Telemetry / analytics | None collected | No |
 
 **Network destinations:** `api.github.com` (GraphQL + REST), or `https://<github-enterprise.uri>/api/...` when configured.
