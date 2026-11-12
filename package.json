@@ -1,0 +1,207 @@
+{
+  "name": "pr-status-panel",
+  "displayName": "PR Status Panel",
+  "description": "Live sidebar with checks, review comments and approvals for your open GitHub pull requests.",
+  "version": "0.4.0",
+  "publisher": "mtorres11",
+  "license": "MIT",
+  "author": {
+    "name": "Marco Torres C",
+    "url": "https://github.com/mtorres11"
+  },
+  "homepage": "https://github.com/mtorres11/pr-status-panel#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mtorres11/pr-status-panel.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mtorres11/pr-status-panel/issues"
+  },
+  "keywords": [
+    "github",
+    "pull requests",
+    "pr",
+    "checks",
+    "reviews",
+    "ci",
+    "sidebar"
+  ],
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    },
+    "virtualWorkspaces": true
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "prStatus",
+          "title": "PR Status",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "prStatus": [
+        {
+          "type": "webview",
+          "id": "prStatus.view",
+          "name": "Pull Requests"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "prStatus.refresh",
+        "title": "Refresh",
+        "category": "PR Status",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "prStatus.addAccount",
+        "title": "Add GitHub Account",
+        "category": "PR Status",
+        "icon": "$(person-add)"
+      },
+      {
+        "command": "prStatus.openSettings",
+        "title": "Settings",
+        "category": "PR Status",
+        "icon": "$(gear)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "prStatus.refresh",
+          "when": "view == prStatus.view",
+          "group": "navigation@1"
+        },
+        {
+          "command": "prStatus.openSettings",
+          "when": "view == prStatus.view",
+          "group": "navigation@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "PR Status Panel",
+      "properties": {
+        "prStatus.refreshIntervalSeconds": {
+          "type": "number",
+          "default": 60,
+          "minimum": 15,
+          "description": "How often to refresh, in seconds. Refreshing pauses while VS Code is not focused or the panel is hidden.",
+          "scope": "application"
+        },
+        "prStatus.organizations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Limit \"All repos\" and the repo list to these GitHub organizations/users (e.g. [\"my-org\"]). Empty = everything the account can access.",
+          "scope": "application"
+        },
+        "prStatus.favoriteRepos": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Pinned repos (owner/name). Toggle with the star in the repo dropdown.",
+          "scope": "application"
+        },
+        "prStatus.teamMembers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "GitHub usernames offered in the Author dropdown, plus a \"Whole team\" option.",
+          "scope": "application"
+        },
+        "prStatus.requiredApprovals": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0,
+          "description": "Fallback number of required approvals when it cannot be read from the repo's branch rules.",
+          "scope": "application"
+        },
+        "prStatus.requiredApprovalsPerRepo": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          },
+          "default": {},
+          "description": "Per-repo override for required approvals, e.g. {\"owner/repo\": 2}. Takes precedence over the repo's rules.",
+          "scope": "application"
+        },
+        "prStatus.ticketPattern": {
+          "type": "string",
+          "default": "[A-Z][A-Z0-9]+-\\d+",
+          "description": "Regex used to extract the ticket key from the branch name, then the title.",
+          "scope": "application"
+        },
+        "prStatus.jiraBaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Jira site used for ticket links, e.g. https://yourcompany.atlassian.net. You can paste any Jira URL (a board or issue link); only the site part is used. When empty, clicking a ticket asks for it.",
+          "scope": "application"
+        },
+        "prStatus.ignoredChecks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Check names to ignore (case-insensitive regex), e.g. [\"codecov.*\", \"optional-.*\"].",
+          "scope": "application"
+        },
+        "prStatus.ignoreBotThreads": {
+          "type": "boolean",
+          "default": false,
+          "description": "Do not count review comments started by bots (e.g. Copilot) in the Comments bar.",
+          "scope": "application"
+        },
+        "prStatus.groupByRepo": {
+          "type": "boolean",
+          "default": false,
+          "description": "Group pull requests by repository instead of by status.",
+          "scope": "application"
+        },
+        "prStatus.compact": {
+          "type": "boolean",
+          "default": false,
+          "description": "One line per PR with mini bars.",
+          "scope": "application"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "npm run compile && vsce package --no-dependencies -o pr-status-panel.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.95.0",
+    "@vscode/vsce": "^4.1.0",
+    "typescript": "^5.6.0"
+  },
+  "overrides": {
+    "minimatch": "^11.0.1"
+  }
+}
