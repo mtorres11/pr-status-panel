@@ -224,9 +224,21 @@
         // unresolved threads get their own yellow segment, like running checks, instead of falling into the gray rest
         bar([{ n: t.resolved, cls: 'ok' }, { n: t.total - t.resolved, cls: 'run' }], t.total),
         t.total ? `${t.resolved} of ${t.total} review comments resolved, ${t.total - t.resolved} open` : 'No review comments'),
-      box('Approvals', `${a.approved}/${a.required}`,
-        bar([{ n: Math.min(a.approved, Math.max(a.required, 1)), cls: 'ok' }, { n: a.changesRequested, cls: 'bad' }], Math.max(a.required, a.approved + a.changesRequested, 1)),
-        `${a.approved} approval(s) of ${a.required} required${a.changesRequested ? `, ${a.changesRequested} requested changes` : ''}`));
+      box('Approvals', approvalValue(a),
+        // extra approvals still fill the bar: met = fully green, never a gray gap
+        bar([{ n: a.approved, cls: 'ok' }, { n: a.changesRequested, cls: 'bad' }], Math.max(a.required, a.approved + a.changesRequested, 1)),
+        approvalTitle(a)));
+  }
+
+  /** "2/2 +1" when there are more approvals than required, so it never reads as "3 of 2". */
+  function approvalValue(a) {
+    const extra = a.approved - a.required;
+    return a.required > 0 && extra > 0 ? `${a.required}/${a.required} +${extra}` : `${a.approved}/${a.required}`;
+  }
+
+  function approvalTitle(a) {
+    const met = a.approved >= a.required ? ': requirement met' : `: ${a.required - a.approved} more needed`;
+    return `${a.approved} approval(s) (${a.required} required)${met}${a.changesRequested ? `, ${a.changesRequested} requested changes` : ''}`;
   }
 
   /** Small copy icon: the extension copies the URL from its own data; shows ✓ briefly. */
@@ -276,6 +288,7 @@
         pr.ticketUrl ? copyIcon(pr, 'ticket', `${pr.ticket} link`) : null,
         h('span', { class: 'repo', title: pr.repo }, repoName),
         behindHint(pr),
+        pr.inMergeQueue ? h('span', { class: 'queued', title: 'In the merge queue: GitHub will merge it when its checks pass' }, '⇢ in queue') : null,
         prMenu(pr)),
       h('div', { class: 'pr-row' },
         h('a', { class: 'pr-link', href: '#', title: pr.url, onclick: (e) => { e.preventDefault(); open(pr.url); } },

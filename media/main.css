@@ -200,3 +200,4 @@ button.secondary:disabled { opacity: 0.5; cursor: default; }
   width: 6px; height: 6px; border-radius: 50%; background: var(--run);
 }
 .pr-menu-sep { border-top: 1px solid var(--border); margin: 4px 0; }
+.queued { flex: none; color: var(--ok); font-size: 0.8em; opacity: 0.85; white-space: nowrap; }
