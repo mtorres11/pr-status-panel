@@ -191,3 +191,12 @@ button.secondary:disabled { opacity: 0.5; cursor: default; }
 }
 .copy-icon:hover { color: var(--vscode-foreground); background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2)); }
 .copy-icon.done { color: var(--ok); }
+
+/* Branch behind its base: a quiet label plus a dot on the gear. */
+.behind { flex: none; color: var(--run); font-size: 0.8em; opacity: 0.85; white-space: nowrap; }
+.gear.has-action { position: relative; }
+.gear.has-action::after {
+  content: ""; position: absolute; top: 2px; right: 2px;
+  width: 6px; height: 6px; border-radius: 50%; background: var(--run);
+}
+.pr-menu-sep { border-top: 1px solid var(--border); margin: 4px 0; }

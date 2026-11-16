@@ -49,6 +49,8 @@ async function graphql<T>(
   api: ApiTarget,
   query: string,
   variables: Record<string, unknown>,
+  /** Throw on any GraphQL error, even with partial data (used for mutations). */
+  strict = false,
 ): Promise<T> {
   const res = await fetch(api.graphqlUrl, {
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -70,7 +72,7 @@ async function graphql<T>(
     data?: T;
     errors?: { message: string }[];
   };
-  if (body.errors?.length && !body.data) {
+  if (body.errors?.length && (strict || !body.data)) {
     throw new GitHubError(body.errors.map((e) => e.message).join("; "));
   }
   return body.data as T;
@@ -105,6 +107,10 @@ export interface RawPullRequest {
   updatedAt: string;
   headRefName: string;
   baseRefName: string;
+  /** Head commit; passed back when updating the branch so a newer push is never overwritten. */
+  headRefOid?: string;
+  /** True when the branch is behind its base and the viewer may update it. */
+  viewerCanUpdateBranch?: boolean;
   reviewDecision: string | null;
   mergeable: string;
   repository: { nameWithOwner: string };
@@ -154,9 +160,12 @@ export interface RawPullRequest {
   };
 }
 
-const PR_FIELDS = `
+/** Older GitHub Enterprise servers lack viewerCanUpdateBranch; drop it once if the server rejects it. */
+let updateBranchSupported = true;
+
+const prFields = (): string => `
   ... on PullRequest {
-    id number title url isDraft isInMergeQueue updatedAt headRefName baseRefName reviewDecision mergeable
+    id number title url isDraft isInMergeQueue updatedAt headRefName baseRefName headRefOid reviewDecision mergeable${updateBranchSupported ? " viewerCanUpdateBranch" : ""}
     repository { nameWithOwner }
     author { __typename login }
     baseRef { branchProtectionRule { requiredApprovingReviewCount } }
@@ -187,11 +196,11 @@ const PR_FIELDS = `
     }
   }`;
 
-const SEARCH_QUERY = `
+const searchQuery = (): string => `
 query($q: String!, $cursor: String) {
   search(query: $q, type: ISSUE, first: 50, after: $cursor) {
     pageInfo { hasNextPage endCursor }
-    nodes { ${PR_FIELDS} }
+    nodes { ${prFields()} }
   }
 }`;
 
@@ -199,6 +208,20 @@ export async function searchPullRequests(
   api: ApiTarget,
   q: string,
   maxPages = 4,
+): Promise<RawPullRequest[]> {
+  try {
+    return await searchPages(api, q, maxPages);
+  } catch (e) {
+    if (!updateBranchSupported || !/viewerCanUpdateBranch/.test((e as Error).message)) throw e;
+    updateBranchSupported = false;
+    return searchPages(api, q, maxPages);
+  }
+}
+
+async function searchPages(
+  api: ApiTarget,
+  q: string,
+  maxPages: number,
 ): Promise<RawPullRequest[]> {
   const out: RawPullRequest[] = [];
   let cursor: string | null = null;
@@ -208,7 +231,7 @@ export async function searchPullRequests(
         pageInfo: { hasNextPage: boolean; endCursor: string | null };
         nodes: (RawPullRequest | Record<string, never>)[];
       };
-    } = await graphql(api, SEARCH_QUERY, { q, cursor });
+    } = await graphql(api, searchQuery(), { q, cursor });
     for (const n of data.search.nodes) {
       if (n && "id" in n) out.push(n as RawPullRequest);
     }
@@ -331,4 +354,26 @@ export async function rerunWorkflowRun(
     }
     throw new GitHubError(message, res.status);
   }
+}
+
+export type UpdateMethod = "MERGE" | "REBASE";
+
+const UPDATE_BRANCH = `
+mutation($id: ID!, $head: GitObjectID, $method: PullRequestBranchUpdateMethod) {
+  updatePullRequestBranch(input: { pullRequestId: $id, expectedHeadOid: $head, updateMethod: $method }) {
+    pullRequest { headRefOid }
+  }
+}`;
+
+/**
+ * Brings a PR branch up to date with its base, like GitHub's "Update branch" button.
+ * GitHub refuses if the branch moved past `expectedHeadOid`, so a newer push is never overwritten.
+ */
+export async function updatePullRequestBranch(
+  api: ApiTarget,
+  pullRequestId: string,
+  expectedHeadOid: string | undefined,
+  method: UpdateMethod,
+): Promise<void> {
+  await graphql(api, UPDATE_BRANCH, { id: pullRequestId, head: expectedHeadOid ?? null, method }, true);
 }

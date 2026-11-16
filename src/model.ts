@@ -63,6 +63,12 @@ export interface PrView {
     items: ReviewerItem[];
   };
   mergeable: string;
+  /** Base branch name, e.g. "main". */
+  baseRef: string;
+  /** Head commit when last refreshed (guards the branch update). */
+  headOid?: string;
+  /** Behind its base and the viewer may update it. */
+  canUpdateBranch: boolean;
   rerun: {
     /** Workflow runs with at least one failed check. */
     failedRunIds: number[];
@@ -264,6 +270,9 @@ export function toView(
     threads,
     approvals,
     mergeable: pr.mergeable,
+    baseRef: pr.baseRefName,
+    headOid: pr.headRefOid,
+    canUpdateBranch: pr.viewerCanUpdateBranch === true,
     rerun: {
       failedRunIds: uniq(
         items.filter((i) => i.state === "failed").map((i) => i.runId),

@@ -109,7 +109,7 @@
     footer.replaceChildren(
       'Created by ', a.author,
       a.repoUrl ? ' · ' : '',
-      a.repoUrl ? h('a', { href: '#', title: a.repoUrl, onclick: (e) => { e.preventDefault(); open(a.repoUrl); } }, 'GitHub') : null,
+      a.repoUrl ? h('a', { href: '#', title: a.repoUrl, onclick: (e) => { e.preventDefault(); open(a.repoUrl); } }, 'GitHub') : '',
       a.version ? ` · v${a.version}` : '');
   }
 
@@ -275,6 +275,7 @@
         h('span', { class: 'dot', title: st.label }, st.icon), ticket,
         pr.ticketUrl ? copyIcon(pr, 'ticket', `${pr.ticket} link`) : null,
         h('span', { class: 'repo', title: pr.repo }, repoName),
+        behindHint(pr),
         prMenu(pr)),
       h('div', { class: 'pr-row' },
         h('a', { class: 'pr-link', href: '#', title: pr.url, onclick: (e) => { e.preventDefault(); open(pr.url); } },
@@ -349,10 +350,28 @@
       },
     }, label);
 
+    const behind = showBehind(pr);
+    const updateWhy = pr.canUpdateBranch
+      ? undefined
+      : pr.mergeable === 'CONFLICTING'
+        ? 'Merge conflicts: resolve them locally first'
+        : `Nothing to update: up to date with ${pr.baseRef}, or you can't push to this branch`;
+    const update = (label, method, title) => h('button', {
+      class: 'pr-menu-item',
+      disabled: updateWhy !== undefined,
+      title: updateWhy || title,
+      onclick: (e) => {
+        e.stopPropagation();
+        openMenuId = null;
+        renderList();
+        send({ type: 'updateBranch', prId: pr.id, method });
+      },
+    }, label);
+
     return h('span', { class: 'pr-menu-wrap', onclick: (e) => e.stopPropagation() },
       h('button', {
-        class: 'gear' + (isOpen ? ' open' : ''),
-        title: 'PR options',
+        class: 'gear' + (isOpen ? ' open' : '') + (behind ? ' has-action' : ''),
+        title: behind ? `PR options · behind ${pr.baseRef}, can be updated` : 'PR options',
         'aria-haspopup': 'menu',
         'aria-expanded': isOpen ? 'true' : 'false',
         onclick: (e) => { e.stopPropagation(); openMenuId = isOpen ? null : pr.id; renderList(); },
@@ -361,8 +380,24 @@
         ? h('div', { class: 'pr-menu', role: 'menu' },
             item(`↻ Re-run failed checks${failed ? ` (${failed})` : ''}`, 'failed', 'Re-run only the failed jobs', failedReason),
             item('↻ Re-run all checks', 'all', 'Re-run every job in the workflow runs for this PR', allReason),
-            reason ? h('div', { class: 'pr-menu-note' }, reason) : null)
+            reason ? h('div', { class: 'pr-menu-note' }, reason) : null,
+            h('div', { class: 'pr-menu-sep' }),
+            update(`⤓ Update branch (merge ${pr.baseRef})`, 'merge', `Merge the latest ${pr.baseRef} into this branch, like GitHub's Update branch button`),
+            update('⤓ Update branch (rebase)', 'rebase', `Replay this branch on top of the latest ${pr.baseRef} (rewrites the branch)`),
+            !pr.canUpdateBranch && pr.mergeable === 'CONFLICTING' ? h('div', { class: 'pr-menu-note' }, updateWhy) : null)
         : null);
+  }
+
+  /** Behind its base and updatable; not shown for drafts or PRs already in the merge queue. */
+  function showBehind(pr) {
+    return pr.canUpdateBranch === true && !pr.isDraft && !pr.inMergeQueue;
+  }
+
+  /** Small, quiet "⤓ behind" label; the action itself lives in the ⚙ menu. */
+  function behindHint(pr) {
+    return showBehind(pr)
+      ? h('span', { class: 'behind', title: `Behind ${pr.baseRef}: update available in ⚙` }, '⤓ behind')
+      : null;
   }
 
   function attentionSort(a, b) {

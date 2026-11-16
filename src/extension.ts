@@ -9,6 +9,8 @@ import {
   RawPullRequest,
   rerunWorkflowRun,
   searchPullRequests,
+  UpdateMethod,
+  updatePullRequestBranch,
 } from "./github";
 import { jiraOrigin, PrView, toView } from "./model";
 import { isHttpsUrl, isLogin, isRepo, logins, repos } from "./validate";
@@ -245,6 +247,9 @@ class PrStatusViewProvider
       case "rerun":
         await this.rerun(String(m.prId ?? ""), m.mode === "failed");
         break;
+      case "updateBranch":
+        await this.updateBranch(String(m.prId ?? ""), m.method === "rebase" ? "REBASE" : "MERGE");
+        break;
       case "configureJira": {
         const input = await vscode.window.showInputBox({
           title: "PR Status: Jira site for ticket links",
@@ -446,6 +451,54 @@ class PrStatusViewProvider
     }
     // Give GitHub a moment to queue the jobs, then refresh.
     setTimeout(() => this.refresh(true), 5000);
+  }
+
+  /** Bring a PR branch up to date with its base (GitHub's "Update branch"), after confirming. */
+  private async updateBranch(prId: string, method: UpdateMethod): Promise<void> {
+    const pr = this.prs.find((p) => p.id === prId);
+    if (!pr) return;
+    if (!pr.canUpdateBranch) {
+      vscode.window.showInformationMessage(
+        `PR Status: #${pr.number} is up to date with ${pr.baseRef}, or you can't push to its branch.`,
+      );
+      return;
+    }
+    const rebase = method === "REBASE";
+    const detail = [
+      pr.title,
+      "",
+      rebase
+        ? `Replays the branch's commits on top of ${pr.baseRef}. This rewrites the branch: anyone with a local copy must reset it (for example git pull --rebase).`
+        : `Merges ${pr.baseRef} into the branch with a merge commit, like GitHub's Update branch button.`,
+      "Checks will run again. If the repository dismisses stale approvals, existing approvals are removed.",
+    ].join("\n");
+    const choice = await vscode.window.showWarningMessage(
+      `${rebase ? "Rebase" : "Update"} ${pr.repo}#${pr.number} onto the latest ${pr.baseRef}?`,
+      { modal: true, detail },
+      rebase ? "Rebase branch" : "Update branch",
+    );
+    if (!choice) return;
+    const target = await this.api();
+    if (!target) {
+      vscode.window.showErrorMessage("PR Status: sign in to GitHub first.");
+      return;
+    }
+    try {
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: `Updating #${pr.number} with ${pr.baseRef}…` },
+        () => updatePullRequestBranch(target.api, pr.id, pr.headOid, method),
+      );
+      vscode.window.showInformationMessage(`PR Status: #${pr.number} is now up to date with ${pr.baseRef}.`);
+    } catch (e) {
+      const msg = (e as Error).message;
+      vscode.window.showErrorMessage(
+        /expected head|head sha|not match/i.test(msg)
+          ? `PR Status: #${pr.number} changed since the last refresh, so it was not updated. The list is refreshing; try again.`
+          : `PR Status: could not update #${pr.number}: ${msg}`,
+      );
+    }
+    // GitHub needs a moment to register the new head and start checks.
+    setTimeout(() => this.refresh(true), 4000);
   }
 
   // ---------- State ----------
