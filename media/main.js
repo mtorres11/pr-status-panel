@@ -70,6 +70,7 @@
     const target = /** @type {HTMLElement} */ (e.target);
     if (repoMenuOpen && !repoCombo.contains(target)) closeRepoMenu();
     if (openMenuId && !target.closest('.pr-menu-wrap')) { openMenuId = null; renderList(); }
+    if (copyMenuOpen && !copySplit.contains(target)) { copyMenuOpen = false; renderShare(); }
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && openMenuId) { openMenuId = null; renderList(); }
@@ -80,11 +81,40 @@
   let displayedPrs = [];
   /** Needs approval = not fully approved yet and not in the merge queue. */
   const needsApproval = (p) => p.approvals.approved < p.approvals.required && !p.inMergeQueue;
-  const descChk = h('input', { type: 'checkbox', id: 'adddesc', onchange: (e) => setState({ addDescription: e.target.checked }) });
-  const copyBtn = h('button', { class: 'secondary copy-btn', onclick: () => {
-    const ids = displayedPrs.filter(needsApproval).map((p) => p.id);
-    if (ids.length) send({ type: 'copyLinks', ids, withDescription: descChk.checked });
-  } });
+
+  // ---------- Copy links: what to copy (group) and how (format). Groups mirror src/copy.ts. ----------
+  /** [id, icon, menu label, button text for n PRs, test] */
+  const COPY_GROUPS = [
+    ['approval', '⏳', 'Needing approval', (n) => `${n} needing approval`, needsApproval],
+    ['ready', '✅', 'Ready to merge', (n) => `${n} ready to merge`, (p) => p.status === 'ready'],
+    ['failing', '✖', 'Failing checks', (n) => `${n} failing`, (p) => p.status === 'failing'],
+    ['changes', '✎', 'Changes requested', (n) => `${n} with changes requested`, (p) => p.status === 'changes'],
+    ['running', '◌', 'Checks running', (n) => `${n} running`, (p) => p.status === 'running'],
+    ['drafts', '○', 'Drafts', (n) => `${n} draft${n === 1 ? '' : 's'}`, (p) => p.isDraft],
+    ['behind', '⤓', 'Behind base branch', (n) => `${n} behind`, (p) => p.canUpdateBranch && !p.isDraft && !p.inMergeQueue],
+    ['queued', '⇢', 'In merge queue', (n) => `${n} in queue`, (p) => p.inMergeQueue],
+    ['all', '☰', 'All shown', (n) => `all ${n}`, () => true],
+  ];
+  const COPY_FORMATS = [['links', 'Links'], ['ticket', 'Ticket + title + link'], ['markdown', 'Markdown list']];
+  const copyGroupOf = (id) => COPY_GROUPS.find((g) => g[0] === id) || COPY_GROUPS[0];
+  const currentCopyGroup = () => copyGroupOf(data && data.ui.copyGroup);
+  let copyMenuOpen = false;
+
+  function copyGroupLinks(id) {
+    const [, , , , test] = copyGroupOf(id);
+    const ids = displayedPrs.filter(test).map((p) => p.id);
+    if (id !== data.ui.copyGroup) setState({ copyGroup: id });
+    if (ids.length) send({ type: 'copyLinks', ids, group: id, format: data.ui.copyFormat || 'links' });
+  }
+
+  const copyBtn = h('button', { class: 'secondary copy-btn', onclick: () => copyGroupLinks(currentCopyGroup()[0]) });
+  const copyCaret = h('button', {
+    class: 'secondary copy-caret', title: 'Choose which PRs to copy', 'aria-haspopup': 'menu',
+    onclick: (e) => { e.stopPropagation(); copyMenuOpen = !copyMenuOpen; renderShare(); },
+  }, '▾');
+  const copyMenu = h('div', { class: 'pr-menu copy-menu', role: 'menu' });
+  const copySplit = h('span', { class: 'copy-split' }, copyBtn, copyCaret, copyMenu);
+  const fmtSel = h('select', { class: 'copy-format', title: 'How the copied text looks', onchange: (e) => setState({ copyFormat: e.target.value }) });
 
   const row = (label, control) => h('label', { class: 'row' }, h('span', { class: 'row-label' }, label), control);
   const controls = h('div', { class: 'controls' },
@@ -96,8 +126,8 @@
         h('label', { class: 'chk', for: 'drafts' }, draftsChk, 'Drafts'),
         sortSel)),
     h('div', { class: 'row' }, h('span', { class: 'row-label' }, 'Share'),
-      h('div', { class: 'inline' }, copyBtn,
-        h('label', { class: 'chk', for: 'adddesc' }, descChk, 'Add description'))));
+      h('div', { class: 'inline' }, copySplit)),
+    row('Format', fmtSel));
   const summary = h('div', { class: 'summary' });
   const list = h('div', { class: 'list' });
   const footer = h('div', { class: 'footer muted' });
@@ -458,15 +488,26 @@
   }
 
   function renderShare() {
-    const todo = displayedPrs.filter(needsApproval);
-    const skipped = displayedPrs.length - todo.length;
-    copyBtn.textContent = `⧉ Copy PR links (${todo.length})`;
-    copyBtn.disabled = todo.length === 0;
-    copyBtn.title = todo.length
-      ? `Copy the links of the ${todo.length} PR(s) still waiting for approval` +
-        (skipped ? ` (${skipped} already approved or in the merge queue are skipped)` : '')
-      : 'No PRs waiting for approval in this list';
-    descChk.checked = !!data.ui.addDescription;
+    const [id, , label, btnText, test] = currentCopyGroup();
+    const count = displayedPrs.filter(test).length;
+    copyBtn.textContent = `⧉ Copy ${btnText(count)}`;
+    copyBtn.disabled = count === 0;
+    copyBtn.title = count ? `Copy the links of ${btnText(count)} (${label.toLowerCase()})` : `No PRs in "${label}" in this list`;
+    copyCaret.setAttribute('aria-expanded', String(copyMenuOpen));
+    copyMenu.hidden = !copyMenuOpen;
+    if (copyMenuOpen) {
+      copyMenu.replaceChildren(...COPY_GROUPS.flatMap(([gid, icon, glabel, , gtest]) => {
+        const n = displayedPrs.filter(gtest).length;
+        const item = h('button', {
+          class: 'pr-menu-item copy-item' + (gid === id ? ' current' : ''),
+          disabled: n === 0,
+          title: n ? `Copy ${n} PR link(s)` : 'None in this list',
+          onclick: (e) => { e.stopPropagation(); copyMenuOpen = false; renderShare(); copyGroupLinks(gid); },
+        }, h('span', null, `${icon} ${glabel}`), h('span', { class: 'copy-count' }, String(n)));
+        return gid === 'all' ? [h('div', { class: 'pr-menu-sep' }), item] : [item];
+      }));
+    }
+    setOptions(fmtSel, COPY_FORMATS, data.ui.copyFormat || 'links');
   }
 
   window.addEventListener('message', (e) => {

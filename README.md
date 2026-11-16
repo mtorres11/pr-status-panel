@@ -47,9 +47,37 @@ gh attestation verify /tmp/pr-status-panel.vsix --repo mtorres11/pr-status-panel
 | Author | Me, a teammate from `prStatus.teamMembers`, the whole team, or any username. |
 | Repo | All repos, or one repo (searchable). Click ☆ next to a repo to add it to **Favorites** (listed right after *All repos*); click ★ to remove it. |
 | Show | Authored / Review requested / Assigned / All. Drafts on/off. Sort by attention, last updated or ticket. |
-| Share | **Copy PR links** copies the links of the listed PRs that still need approval (skips fully approved PRs and PRs in the merge queue), in list order. Tick **Add description** to put each PR's title above its link, with a blank line between PRs. |
+| Share | **⧉ Copy …** copies the links of the listed PRs in one group, in list order. The button copies your last group; **▾** picks another (see below). |
+| Format | How the copied text looks: **Links**, **Ticket + title + link** or **Markdown list** (see below). |
 
 ## Copy links
+
+**Groups** (the ▾ next to the Copy button). Each one shows how many listed PRs it has, and is greyed out when there are none.
+The filters above (account, author, repo, show, drafts) always apply.
+
+| Group | Copies |
+| --- | --- |
+| Needing approval | Not fully approved yet and not in the merge queue |
+| Ready to merge | Everything green and approved |
+| Failing checks | At least one check failing |
+| Changes requested | A reviewer asked for changes |
+| Checks running | Checks still running |
+| Drafts | Draft PRs |
+| Behind base branch | Can be updated with its base branch (see ⚙) |
+| In merge queue | Already queued to merge |
+| All shown | Every listed PR, in sections per status (*Checks failing (2)*, *Ready to merge (1)*, …) |
+
+**Formats:**
+
+| Format | Each PR looks like |
+| --- | --- |
+| Links | `https://github.com/org/repo/pull/12` |
+| Ticket + title + link | `PROJ-123 · Title` / `Jira: <ticket link>` / `PR: <PR link>`, with a blank line between PRs |
+| Markdown list | `- [PROJ-123](<ticket link>) [Title](<PR link>)` |
+
+PRs without a ticket, and chores (titles starting with `[CHORE]`), are copied without one. The Jira line needs
+**Jira site** to be set. If you had ticked **Add description** before, your format starts as **Ticket + title + link**.
+
 
 Each card has a **⧉** copy icon next to the PR title (copies the PR URL) and, when a Jira site is configured, next to the ticket key (copies the ticket URL). The icon turns into ✓ for a moment after copying.
 

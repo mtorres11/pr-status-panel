@@ -12,6 +12,7 @@ import {
   UpdateMethod,
   updatePullRequestBranch,
 } from "./github";
+import { COPY_FORMATS, COPY_GROUPS, CopyFormat, CopyGroup, copyText, inGroup } from "./copy";
 import { jiraOrigin, PrView, toView } from "./model";
 import { isHttpsUrl, isLogin, isRepo, logins, repos } from "./validate";
 
@@ -31,7 +32,10 @@ interface UiState {
   show: ShowMode;
   drafts: boolean;
   sort: SortMode;
-  addDescription: boolean;
+  /** Which PRs "Copy links" takes. */
+  copyGroup: CopyGroup;
+  /** How the copied text looks. */
+  copyFormat: CopyFormat;
 }
 
 const DEFAULT_UI: UiState = {
@@ -40,7 +44,8 @@ const DEFAULT_UI: UiState = {
   show: "authored",
   drafts: true,
   sort: "attention",
-  addDescription: false,
+  copyGroup: "approval",
+  copyFormat: "links",
 };
 
 interface AccountOption {
@@ -221,7 +226,8 @@ class PrStatusViewProvider
           return;
         }
         await this.setUi(patch);
-        if (Object.keys(patch).every((k) => k === "addDescription")) {
+        // Copy preferences only change the share row: no need to fetch PRs again.
+        if (Object.keys(patch).every((k) => k === "copyGroup" || k === "copyFormat")) {
           this.post();
           break;
         }
@@ -242,7 +248,7 @@ class PrStatusViewProvider
         break;
       }
       case "copyLinks":
-        await this.copyLinks(m.ids, m.withDescription === true);
+        await this.copyLinks(m.ids, m.group, m.format);
         break;
       case "rerun":
         await this.rerun(String(m.prId ?? ""), m.mode === "failed");
@@ -326,8 +332,8 @@ class PrStatusViewProvider
     if (SHOW_MODES.includes(p.show as ShowMode)) out.show = p.show as ShowMode;
     if (SORT_MODES.includes(p.sort as SortMode)) out.sort = p.sort as SortMode;
     if (typeof p.drafts === "boolean") out.drafts = p.drafts;
-    if (typeof p.addDescription === "boolean")
-      out.addDescription = p.addDescription;
+    if (COPY_GROUPS.includes(p.copyGroup as CopyGroup)) out.copyGroup = p.copyGroup as CopyGroup;
+    if (COPY_FORMATS.includes(p.copyFormat as CopyFormat)) out.copyFormat = p.copyFormat as CopyFormat;
     return out;
   }
 
@@ -358,37 +364,25 @@ class PrStatusViewProvider
    * The webview sends PR ids in display order; only known PRs that still need
    * approval are used, and the text is built here from our own data.
    */
-  private async copyLinks(
-    rawIds: unknown,
-    withDescription: boolean,
-  ): Promise<void> {
-    const ids = Array.isArray(rawIds)
-      ? rawIds.filter((v): v is string => typeof v === "string")
-      : [];
+  /**
+   * Copy the links of the shown PRs in one group, in the order shown. Every id is checked
+   * against the group again here, so the panel can never copy PRs outside it.
+   */
+  private async copyLinks(rawIds: unknown, rawGroup: unknown, rawFormat: unknown): Promise<void> {
+    const group: CopyGroup = COPY_GROUPS.includes(rawGroup as CopyGroup) ? (rawGroup as CopyGroup) : "approval";
+    const format: CopyFormat = COPY_FORMATS.includes(rawFormat as CopyFormat) ? (rawFormat as CopyFormat) : "links";
+    const ids = Array.isArray(rawIds) ? rawIds.filter((v): v is string => typeof v === "string") : [];
     const byId = new Map(this.prs.map((p) => [p.id, p]));
     const prs = ids
       .map((id) => byId.get(id))
-      .filter(
-        (p): p is PrView =>
-          !!p &&
-          p.approvals.approved < p.approvals.required &&
-          !p.inMergeQueue &&
-          isHttpsUrl(p.url),
-      );
+      .filter((p): p is PrView => !!p && inGroup(p, group) && isHttpsUrl(p.url) && (!p.ticketUrl || isHttpsUrl(p.ticketUrl)));
     if (!prs.length) {
-      vscode.window.showInformationMessage(
-        "PR Status: no PRs waiting for approval in this list.",
-      );
+      vscode.window.showInformationMessage("PR Status: no PRs in this group in the list.");
       return;
     }
-    const oneLine = (t: string) => t.replace(/\s+/g, " ").trim();
-    const text = withDescription
-      ? prs.map((p) => `${oneLine(p.title)}\n${p.url}`).join("\n\n")
-      : prs.map((p) => p.url).join("\n");
-    await vscode.env.clipboard.writeText(text);
-    vscode.window.showInformationMessage(
-      `PR Status: copied ${prs.length} PR link${prs.length === 1 ? "" : "s"}${withDescription ? " with descriptions" : ""}.`,
-    );
+    await vscode.env.clipboard.writeText(copyText(prs, format, group === "all"));
+    const how = format === "links" ? "" : format === "ticket" ? " with tickets and titles" : " as a Markdown list";
+    vscode.window.showInformationMessage(`PR Status: copied ${prs.length} PR link${prs.length === 1 ? "" : "s"}${how}.`);
   }
 
   /** Re-run failed jobs (or all jobs) of the GitHub Actions runs behind a PR's checks. */
@@ -513,6 +507,8 @@ class PrStatusViewProvider
     // accountKey is only used as a lookup key; keep it even before accounts load.
     if (typeof stored.accountKey === "string")
       valid.accountKey = stored.accountKey;
+    // Before 0.8.0 there was only an "Add description" checkbox: it becomes the ticket format.
+    if (!valid.copyFormat && stored.addDescription === true) valid.copyFormat = "ticket";
     return { ...DEFAULT_UI, ...valid };
   }
 

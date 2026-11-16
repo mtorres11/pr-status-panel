@@ -201,3 +201,11 @@ button.secondary:disabled { opacity: 0.5; cursor: default; }
 }
 .pr-menu-sep { border-top: 1px solid var(--border); margin: 4px 0; }
 .queued { flex: none; color: var(--ok); font-size: 0.8em; opacity: 0.85; white-space: nowrap; }
+.copy-split { position: relative; display: flex; flex: 1; min-width: 0; }
+.copy-split .copy-btn { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.copy-caret { flex: none; padding: 0 8px; border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 1px solid var(--border); }
+.copy-menu { left: 0; right: auto; top: calc(100% + 2px); min-width: 230px; }
+.copy-menu[hidden] { display: none; }
+.copy-item { display: flex; justify-content: space-between; gap: 16px; }
+.copy-item.current { font-weight: 600; }
+.copy-count { color: var(--muted); font-variant-numeric: tabular-nums; }
