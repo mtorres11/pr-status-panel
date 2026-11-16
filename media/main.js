@@ -86,6 +86,7 @@
   /** [id, icon, menu label, button text for n PRs, test] */
   const COPY_GROUPS = [
     ['approval', '⏳', 'Needing approval', (n) => `${n} needing approval`, needsApproval],
+    ['waiting', '◐', 'Waiting on review', (n) => `${n} waiting on review`, (p) => p.status === 'waiting'],
     ['ready', '✅', 'Ready to merge', (n) => `${n} ready to merge`, (p) => p.status === 'ready'],
     ['failing', '✖', 'Failing checks', (n) => `${n} failing`, (p) => p.status === 'failing'],
     ['changes', '✎', 'Changes requested', (n) => `${n} with changes requested`, (p) => p.status === 'changes'],

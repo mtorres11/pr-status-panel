@@ -58,6 +58,7 @@ The filters above (account, author, repo, show, drafts) always apply.
 | Group | Copies |
 | --- | --- |
 | Needing approval | Not fully approved yet and not in the merge queue |
+| Waiting on review | Same as the *Waiting on review* section of the list: checks green, nothing to fix, still missing approvals (or comments to resolve) |
 | Ready to merge | Everything green and approved |
 | Failing checks | At least one check failing |
 | Changes requested | A reviewer asked for changes |

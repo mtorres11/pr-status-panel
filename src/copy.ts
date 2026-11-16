@@ -3,6 +3,7 @@ import type { PrStatus, PrView } from "./model";
 
 export const COPY_GROUPS = [
   "approval",
+  "waiting",
   "ready",
   "failing",
   "changes",
@@ -20,6 +21,7 @@ export type CopyFormat = (typeof COPY_FORMATS)[number];
 /** Which PRs each copy group takes. Mirrors COPY_GROUP_TEST in media/main.js. */
 const GROUP_TEST: Record<CopyGroup, (p: PrView) => boolean> = {
   approval: (p) => p.approvals.approved < p.approvals.required && !p.inMergeQueue,
+  waiting: (p) => p.status === "waiting",
   ready: (p) => p.status === "ready",
   failing: (p) => p.status === "failing",
   changes: (p) => p.status === "changes",
