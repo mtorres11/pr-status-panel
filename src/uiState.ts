@@ -3,6 +3,7 @@
 
 import { COPY_FORMATS, COPY_GROUPS, CopyFormat, CopyGroup } from "./copy";
 import { DEFAULT_DEPLOY_UI, deployPatch, DeployUi } from "./deployFilters";
+import type { KeyValueStore } from "./ports";
 import { asRecord, isLogin, isRepo, oneOf, pickValid } from "./validate";
 
 export const SHOW_MODES = ["authored", "review", "assigned", "all"] as const;
@@ -69,4 +70,22 @@ export function storedUi(raw: unknown): UiState {
   // Before 0.8.0 there was only an "Add description" checkbox: it becomes the ticket format.
   if (!valid.copyFormat && stored.addDescription === true) valid.copyFormat = "ticket";
   return { ...DEFAULT_UI, ...valid };
+}
+
+const KEY = "ui";
+
+/** The UI state, read once from storage and kept in memory; every change is saved. */
+export class UiStateStore {
+  private state?: UiState;
+
+  constructor(private readonly store: KeyValueStore) {}
+
+  get(): UiState {
+    return (this.state ??= storedUi(this.store.get(KEY)));
+  }
+
+  async update(patch: Partial<UiState>): Promise<void> {
+    this.state = { ...this.get(), ...patch };
+    await this.store.set(KEY, this.state);
+  }
 }

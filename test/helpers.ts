@@ -1,6 +1,7 @@
 // Builders for test data: a raw GitHub PR and a PR view with sensible defaults.
 
-import type { RawPullRequest } from "../src/github";
+import type { DeployRawPr } from "../src/deployGithub";
+import type { RawPullRequest } from "../src/githubPrs";
 import type { PrView } from "../src/model";
 
 type Rollup = NonNullable<RawPullRequest["commits"]["nodes"][number]["commit"]["statusCheckRollup"]>;
@@ -66,6 +67,30 @@ export function view(over: Partial<PrView> = {}): PrView {
     baseRef: "main",
     canUpdateBranch: false,
     rerun: { failedRunIds: [], allRunIds: [], failedExternal: 0 },
+    ...over,
+  };
+}
+
+/** A Deployments search result. */
+export function deployRaw(over: Partial<DeployRawPr> = {}): DeployRawPr {
+  return {
+    id: "D1",
+    number: 5,
+    title: "ABC-1 Add thing",
+    url: "https://github.com/o/r/pull/5",
+    isDraft: false,
+    state: "MERGED",
+    createdAt: "2026-03-01T00:00:00Z",
+    updatedAt: "2026-03-02T00:00:00Z",
+    mergedAt: "2026-03-02T00:00:00Z",
+    mergeCommit: { oid: "m".repeat(40) },
+    headRefName: "feature",
+    headRefOid: "h".repeat(40),
+    baseRefName: "main",
+    reviewDecision: null,
+    repository: { nameWithOwner: "o/r" },
+    author: { login: "me" },
+    mergedBy: { login: "ann" },
     ...over,
   };
 }

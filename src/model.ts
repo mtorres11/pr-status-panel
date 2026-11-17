@@ -1,4 +1,4 @@
-import type { RawPullRequest } from "./github";
+import type { RawPullRequest } from "./githubPrs";
 import { ticketsOf, ticketUrl } from "./ticketLinks";
 import { MAX_REGEX_INPUT, safeRegex } from "./validate";
 

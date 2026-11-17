@@ -1,5 +1,6 @@
 // Deployments tab filters: the stored UI state and the GitHub searches it turns into.
 
+import { loginsFor, repoScope } from "./searchScope";
 import { parsePrRef, ticketKeyIn } from "./ticketLinks";
 import { isLogin, isRepo, oneOf, pickValid } from "./validate";
 
@@ -72,17 +73,10 @@ export type FetchPlan =
   | { queries: string[] }
   | { hint: string };
 
-function scope(ui: DeployUi, ctx: SearchContext): string {
-  if (ui.deployRepo !== "*") return `repo:${ui.deployRepo}`;
-  if (ctx.organizations.length)
-    return ctx.organizations.map((o) => `org:${o}`).join(" ");
-  return ctx.favoriteRepos.map((r) => `repo:${r}`).join(" ");
-}
-
+/** Author qualifiers; "@anyone" is one search without one. */
 function authors(ui: DeployUi, ctx: SearchContext): string[] {
-  if (ui.deployWho === "@me") return [`author:${ctx.viewer}`];
-  if (ui.deployWho === "@team") return ctx.team.map((m) => `author:${m}`);
-  return ui.deployWho === "@anyone" ? [""] : [`author:${ui.deployWho}`];
+  if (ui.deployWho === "@anyone") return [""];
+  return loginsFor(ui.deployWho, ctx.viewer, ctx.team).map((m) => `author:${m}`);
 }
 
 function sinceDate(days: number): string {
@@ -113,7 +107,7 @@ function findPlan(ui: DeployUi, where: string): FetchPlan | undefined {
 }
 
 export function fetchPlan(ui: DeployUi, ctx: SearchContext): FetchPlan {
-  const where = scope(ui, ctx);
+  const where = repoScope(ui.deployRepo, ctx.organizations, ctx.favoriteRepos);
   const found = findPlan(ui, where);
   if (found) return found;
   const who = authors(ui, ctx);

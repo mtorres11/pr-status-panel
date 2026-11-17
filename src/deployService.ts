@@ -78,9 +78,29 @@ interface RepoContext {
   histories: PipelineHistory[];
 }
 
+/** GitHub reads the service needs (the real ones by default). */
+export interface DeployPrReader {
+  search(api: ApiTarget, q: string): Promise<DeployRawPr[]>;
+  get(api: ApiTarget, repo: string, number: number): Promise<DeployRawPr | undefined>;
+}
+
+export interface DeployServiceDeps {
+  branches: Pick<BranchCommits, "index" | "isIn">;
+  pipelines: Pick<PipelineReader, "pipelines" | "history">;
+  prs: DeployPrReader;
+}
+
+/** The real GitHub and AWS readers. */
+export function defaultDeployDeps(): DeployServiceDeps {
+  return {
+    branches: new BranchCommits(),
+    pipelines: new PipelineReader(),
+    prs: { search: searchDeployPrs, get: getDeployPr },
+  };
+}
+
 export class DeployService {
-  private readonly branches = new BranchCommits();
-  private readonly reader = new PipelineReader();
+  constructor(private readonly deps: DeployServiceDeps = defaultDeployDeps()) {}
 
   async load(req: DeployRequest): Promise<DeployResult> {
     const plan = fetchPlan(req.ui, req.search);
@@ -90,10 +110,12 @@ export class DeployService {
       "pr" in plan
         ? await this.one(req, plan.pr)
         : await this.search(req, plan.queries);
-    const aws: AwsStatus = { state: req.aws ? "ok" : "off" };
+    let aws: AwsStatus = { state: req.aws ? "ok" : "off" };
     const repos = new Map<string, RepoContext>();
     for (const repo of new Set(raws.map((r) => r.repository.nameWithOwner))) {
-      repos.set(repo, await this.repoContext(req, repo, raws, aws));
+      const { context, status } = await this.repoContext(req, repo, raws, aws.state === "ok");
+      repos.set(repo, context);
+      aws = status ?? aws;
     }
     const prs = await mapLimit(raws, 4, (r) =>
       this.toPr(req, r, repos.get(r.repository.nameWithOwner) as RepoContext),
@@ -109,7 +131,7 @@ export class DeployService {
     req: DeployRequest,
     ref: { repo: string; number: number },
   ): Promise<DeployRawPr[]> {
-    const pr = await getDeployPr(req.api, ref.repo, ref.number);
+    const pr = await this.deps.prs.get(req.api, ref.repo, ref.number);
     return pr ? [pr] : [];
   }
 
@@ -117,9 +139,7 @@ export class DeployService {
     req: DeployRequest,
     queries: string[],
   ): Promise<DeployRawPr[]> {
-    const pages = await mapLimit(queries, 3, (q) =>
-      searchDeployPrs(req.api, q),
-    );
+    const pages = await mapLimit(queries, 3, (q) => this.deps.prs.search(req.api, q));
     const unique = new Map(
       pages
         .flat()
@@ -132,13 +152,16 @@ export class DeployService {
       .slice(0, MAX_PRS);
   }
 
-  /** Branch history from just before the oldest merge, and the repo's pipelines (when AWS is on). */
+  /**
+   * Branch history from just before the oldest merge, and the repo's pipelines when AWS is on and still
+   * working (`awsOk`); `status` is set when reading the pipelines failed.
+   */
   private async repoContext(
     req: DeployRequest,
     repo: string,
     raws: DeployRawPr[],
-    aws: AwsStatus,
-  ): Promise<RepoContext> {
+    awsOk: boolean,
+  ): Promise<{ context: RepoContext; status?: AwsStatus }> {
     const merged = raws
       .filter((r) => r.repository.nameWithOwner === repo && r.mergedAt)
       .map((r) => r.mergedAt as string);
@@ -149,35 +172,30 @@ export class DeployService {
     const since = new Date(
       Math.max(oldest - 2 * DAY, Date.now() - 365 * DAY),
     ).toISOString();
-    const idx = await this.branches
+    const idx = await this.deps.branches
       .index(req.api, repo, req.ui.deployBranch, since)
       .catch(() => undefined);
-    return {
-      idx,
-      histories: merged.length ? await this.histories(req, repo, aws) : [],
-    };
+    const { histories, status } =
+      merged.length && awsOk ? await this.histories(req, repo) : { histories: [], status: undefined };
+    return { context: { idx, histories }, status };
   }
 
+  /** The repo's pipeline histories, or none and why when AWS could not be read. */
   private async histories(
     req: DeployRequest,
     repo: string,
-    aws: AwsStatus,
-  ): Promise<PipelineHistory[]> {
-    if (!req.aws || aws.state !== "ok") return [];
+  ): Promise<{ histories: PipelineHistory[]; status?: AwsStatus }> {
     const cfg = req.aws;
+    if (!cfg) return { histories: [] };
     try {
-      const names = await this.reader.pipelines(cfg, req.pipelinePrefix(repo));
-      return await mapLimit(names, 3, (n) =>
-        this.reader.history(cfg, n, req.ignoreStages),
-      );
+      const names = await this.deps.pipelines.pipelines(cfg, req.pipelinePrefix(repo));
+      const histories = await mapLimit(names, 3, (n) => this.deps.pipelines.history(cfg, n, req.ignoreStages));
+      return { histories };
     } catch (e) {
-      Object.assign(
-        aws,
-        e instanceof AwsError
-          ? { state: e.kind, message: e.message }
-          : { state: "error", message: (e as Error).message },
-      );
-      return [];
+      // An AwsError of kind "other" is shown like any other error.
+      const kind = e instanceof AwsError && e.kind !== "other" ? e.kind : "error";
+      const status: AwsStatus = { state: kind, message: (e as Error).message };
+      return { histories: [], status };
     }
   }
 
@@ -214,7 +232,7 @@ export class DeployService {
         inBranch: ctx.idx?.position.has(r.headRefOid) ? true : undefined,
       };
     }
-    const contains = containsFn(this.branches, req.api, repo, ctx.idx);
+    const contains = containsFn(this.deps.branches, req.api, repo, ctx.idx);
     const inBranch = await contains(sha, req.ui.deployBranch).catch(
       () => undefined,
     );

@@ -5,7 +5,7 @@ import { join, relative } from "node:path";
 
 const ROOT = join(__dirname, "..", "..");
 /** Files that may talk to VS Code: activation and the port adapters. */
-const HOST = new Set(["src/extension.ts", "src/vscodeAdapters.ts"]);
+const HOST = new Set(["src/extension.ts", "src/viewProvider.ts", "src/vscodeAdapters.ts"]);
 
 function sources(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>

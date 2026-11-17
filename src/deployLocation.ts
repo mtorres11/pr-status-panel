@@ -31,7 +31,7 @@ export interface RevertInfo {
 type Contains = (sha: string, ref: string) => Promise<boolean | undefined>;
 
 export function containsFn(
-  branches: BranchCommits,
+  branches: Pick<BranchCommits, "isIn">,
   api: ApiTarget,
   repo: string,
   idx?: BranchIndex,
