@@ -1,7 +1,7 @@
 {
   "name": "pr-status-panel",
   "displayName": "PR Status Panel",
-  "description": "Live sidebar with checks, review comments and approvals for your open GitHub pull requests.",
+  "description": "Live sidebar with checks, review comments and approvals for your open GitHub pull requests, plus a Deployments view showing where each PR is: in main, and which pipeline stages it reached.",
   "version": "0.8.0",
   "publisher": "mtorres11",
   "license": "MIT",
@@ -192,6 +192,51 @@
           "type": "boolean",
           "default": false,
           "description": "One line per PR with mini bars.",
+          "scope": "application"
+        },
+        "prStatus.aws.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Deployments tab: read AWS CodePipeline to show which stages a merged PR has reached.",
+          "scope": "application"
+        },
+        "prStatus.aws.profile": {
+          "type": "string",
+          "default": "",
+          "description": "AWS CLI profile for the account that owns the pipelines. Empty = the CLI's default. Only the user-level value is used.",
+          "scope": "application"
+        },
+        "prStatus.aws.region": {
+          "type": "string",
+          "default": "us-east-1",
+          "description": "AWS region of the pipelines.",
+          "scope": "application"
+        },
+        "prStatus.aws.cliPath": {
+          "type": "string",
+          "default": "aws",
+          "description": "Path to the AWS CLI. Only the user-level value is used.",
+          "scope": "application"
+        },
+        "prStatus.aws.pipelinePrefixes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "description": "Pipeline name prefix per repo, e.g. {\"owner/my-repo\": \"my-\"}. Default: the repo name followed by a dash.",
+          "scope": "application"
+        },
+        "prStatus.aws.ignoreStages": {
+          "type": "string",
+          "default": "^source$",
+          "description": "Regex (case-insensitive) of pipeline stage names to hide, e.g. ^(source|build)$.",
+          "scope": "application"
+        },
+        "prStatus.aws.loginCommand": {
+          "type": "string",
+          "default": "",
+          "description": "Command the 'Sign in to AWS' button runs in a terminal (e.g. your SSO or Okta CLI login). Only the user-level value is used.",
           "scope": "application"
         }
       }

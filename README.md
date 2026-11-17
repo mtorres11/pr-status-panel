@@ -112,6 +112,34 @@ Under each card, collapsible lists show what needs attention. Each opens on its 
 - **N approval(s) missing / requested changes**: reviewers who requested changes, reviewers still asked to review,
   and who approved. When nothing is missing it reads **N approval(s)** and lists the approvers.
 
+## Deployments tab
+
+The second tab shows **where each pull request is now**:
+
+**[✔] Local → [✔] Merged → [✔] Development → [ ] Staging → [ ] Production**
+
+Green with ✔ = reached, mustard = not yet, ◐ = only some pipelines have it, red ✖ on *Merged* = reverted or not in
+the branch. Hover a step for the date, who merged or approved it, and how many pipelines have it.
+**▸ N of M pipelines** lists each pipeline (one per app in a monorepo) with its own steps.
+
+| Control | What it does |
+|---|---|
+| Who / When | Mine, My team, Anyone or one person; open PRs updated and PRs merged in the last 7 days to 1 year. |
+| Repo | All repos (your organizations or favorites) or one repo. |
+| Show … in | Open, merged or both, and the branch used for the *Merged* check (default `main`). |
+| Find | A PR number or link, a ticket key (lists every PR for it) or words from the title. |
+| Where | Only PRs at a point: open, merged and in / not in the branch, reverted, in or not yet in a stage. |
+
+**How it works.** *Merged* checks that the PR's merge commit is in the chosen branch, and finds GitHub `Revert "…(#N)"`
+commits after it. Stages come from **AWS CodePipeline**, read through your own `aws` CLI: a stage counts as reached
+when its latest successful run deployed a commit that contains the merge commit. The PR tab is not affected and
+GitHub-only filters work without AWS.
+
+**AWS setup** (user settings only): `prStatus.aws.profile` (the account that owns the pipelines),
+`prStatus.aws.region`, `prStatus.aws.pipelinePrefixes` (default: repo name + `-`), `prStatus.aws.ignoreStages`
+(e.g. `^(?!.*deployment$)` to show only `*-Deployment` stages) and `prStatus.aws.loginCommand` (your SSO/Okta CLI
+login, run by the **Sign in to AWS** button). Turn it off with `prStatus.aws.enabled`.
+
 ## Settings (gear icon)
 
 | Setting | Default | Notes |

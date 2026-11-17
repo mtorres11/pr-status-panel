@@ -15,6 +15,8 @@ import {
 import { COPY_FORMATS, COPY_GROUPS, CopyFormat, CopyGroup, copyText, inGroup } from "./copy";
 import { jiraOrigin, PrView, toView } from "./model";
 import { isHttpsUrl, isLogin, isRepo, logins, repos } from "./validate";
+import { DEFAULT_DEPLOY_UI, deployPatch, DeployUi, DISPLAY_ONLY_KEYS } from "./deployFilters";
+import { DeployPanel } from "./deployPanel";
 
 const SHOW_MODES = ["authored", "review", "assigned", "all"] as const;
 const SORT_MODES = ["attention", "updated", "ticket"] as const;
@@ -25,7 +27,7 @@ const CFG = "prStatus";
 type ShowMode = "authored" | "review" | "assigned" | "all";
 type SortMode = "attention" | "updated" | "ticket";
 
-interface UiState {
+interface UiState extends DeployUi {
   accountKey?: string;
   author: string; // '@me' | '@team' | login
   repo: string; // '*' | 'owner/name'
@@ -38,7 +40,7 @@ interface UiState {
   copyFormat: CopyFormat;
 }
 
-const DEFAULT_UI: UiState = {
+const DEFAULT_UI: Omit<UiState, keyof DeployUi> = {
   author: "@me",
   repo: "*",
   show: "authored",
@@ -62,7 +64,7 @@ export function activate(context: vscode.ExtensionContext): void {
       webviewOptions: { retainContextWhenHidden: true },
     }),
     vscode.commands.registerCommand("prStatus.refresh", () =>
-      provider.refresh(true),
+      provider.refreshActive(true),
     ),
     vscode.commands.registerCommand("prStatus.addAccount", () =>
       provider.addAccount(),
@@ -116,10 +118,25 @@ class PrStatusViewProvider
     { at: number; value: number | undefined }
   >();
 
+  readonly deploy: DeployPanel;
+
   constructor(private readonly context: vscode.ExtensionContext) {
+    this.deploy = new DeployPanel({
+      github: async () => {
+        await this.loadAccounts();
+        const target = await this.api();
+        this.needsSignIn = !target;
+        if (!target) return undefined;
+        this.viewerLogin ??= await getViewerLogin(target.api);
+        return { api: target.api, viewer: this.viewerLogin };
+      },
+      ui: () => this.ui,
+      post: () => this.post(),
+      settings: () => this.cfg(),
+    });
     this.lastSettings = this.settingsSnapshot();
     this.disposables.push(
-      vscode.authentication.onDidChangeSessions(() => this.refresh(true)),
+      vscode.authentication.onDidChangeSessions(() => this.refreshActive(true)),
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (!e.affectsConfiguration(CFG)) return;
         const snapshot = this.settingsSnapshot();
@@ -129,10 +146,10 @@ class PrStatusViewProvider
         }
         this.lastSettings = snapshot;
         this.schedule();
-        this.refresh(true);
+        this.refreshActive(true);
       }),
       vscode.window.onDidChangeWindowState((s) => {
-        if (s.focused && this.isStale()) this.refresh(false);
+        if (s.focused && this.isStale()) this.refreshActive(false);
       }),
     );
   }
@@ -159,7 +176,7 @@ class PrStatusViewProvider
     );
     view.onDidChangeVisibility(
       () => {
-        if (view.visible && this.isStale()) this.refresh(false);
+        if (view.visible && this.isStale()) this.refreshActive(false);
       },
       undefined,
       this.disposables,
@@ -178,6 +195,7 @@ class PrStatusViewProvider
       vscode.Uri.joinPath(mediaRoot, "main.css"),
     );
     const js = webview.asWebviewUri(vscode.Uri.joinPath(mediaRoot, "main.js"));
+    const deployJs = webview.asWebviewUri(vscode.Uri.joinPath(mediaRoot, "deploy.js"));
     return `<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8">
@@ -187,6 +205,7 @@ class PrStatusViewProvider
 <title>PR Status</title>
 </head><body>
 <div id="app"></div>
+<script nonce="${nonce}" src="${deployJs}"></script>
 <script nonce="${nonce}" src="${js}"></script>
 </body></html>`;
   }
@@ -195,13 +214,14 @@ class PrStatusViewProvider
     type: string;
     [k: string]: unknown;
   }): Promise<void> {
+    if (await this.deploy.handle(m)) return;
     switch (m.type) {
       case "ready":
         this.post();
-        this.refresh(true);
+        this.refreshActive(true);
         break;
       case "refresh":
-        this.refresh(true);
+        this.refreshActive(true);
         break;
       case "setState": {
         const patch = this.validPatch(m.patch);
@@ -226,13 +246,7 @@ class PrStatusViewProvider
           return;
         }
         await this.setUi(patch);
-        // Copy preferences only change the share row: no need to fetch PRs again.
-        if (Object.keys(patch).every((k) => k === "copyGroup" || k === "copyFormat")) {
-          this.post();
-          break;
-        }
-        this.prs = [];
-        this.refresh(true);
+        await this.afterUiChange(Object.keys(patch));
         break;
       }
       case "copyUrl": {
@@ -334,7 +348,21 @@ class PrStatusViewProvider
     if (typeof p.drafts === "boolean") out.drafts = p.drafts;
     if (COPY_GROUPS.includes(p.copyGroup as CopyGroup)) out.copyGroup = p.copyGroup as CopyGroup;
     if (COPY_FORMATS.includes(p.copyFormat as CopyFormat)) out.copyFormat = p.copyFormat as CopyFormat;
-    return out;
+    return { ...out, ...deployPatch(p) };
+  }
+
+  /** Fetches again only what a UI change affects. */
+  private async afterUiChange(keys: string[]): Promise<void> {
+    const displayOnly = ["copyGroup", "copyFormat", ...DISPLAY_ONLY_KEYS];
+    if (keys.every((k) => displayOnly.includes(k))) return this.post();
+    if (keys.every((k) => k === "tab")) {
+      this.post();
+      if (this.isStale()) await this.refreshActive(true);
+      return;
+    }
+    if (keys.some((k) => k.startsWith("deploy"))) return this.deploy.reload();
+    this.prs = [];
+    await this.refreshActive(true);
   }
 
   /** Credit line shown in the panel footer, taken from package.json. */
@@ -444,7 +472,7 @@ class PrStatusViewProvider
       );
     }
     // Give GitHub a moment to queue the jobs, then refresh.
-    setTimeout(() => this.refresh(true), 5000);
+    setTimeout(() => this.refreshActive(true), 5000);
   }
 
   /** Bring a PR branch up to date with its base (GitHub's "Update branch"), after confirming. */
@@ -492,7 +520,7 @@ class PrStatusViewProvider
       );
     }
     // GitHub needs a moment to register the new head and start checks.
-    setTimeout(() => this.refresh(true), 4000);
+    setTimeout(() => this.refreshActive(true), 4000);
   }
 
   // ---------- State ----------
@@ -509,7 +537,7 @@ class PrStatusViewProvider
       valid.accountKey = stored.accountKey;
     // Before 0.8.0 there was only an "Add description" checkbox: it becomes the ticket format.
     if (!valid.copyFormat && stored.addDescription === true) valid.copyFormat = "ticket";
-    return { ...DEFAULT_UI, ...valid };
+    return { ...DEFAULT_UI, ...DEFAULT_DEPLOY_UI, ...valid };
   }
 
   private async setUi(patch: Partial<UiState>): Promise<void> {
@@ -552,14 +580,14 @@ class PrStatusViewProvider
     if (this.timer) clearInterval(this.timer);
     this.timer = setInterval(() => {
       if (this.view?.visible && vscode.window.state.focused)
-        this.refresh(false);
+        this.refreshActive(false);
     }, this.cfg().refreshIntervalSeconds * 1000);
   }
 
+  /** The tab on screen has not been refreshed within the refresh interval. */
   private isStale(): boolean {
-    return (
-      Date.now() - this.lastRefresh > this.cfg().refreshIntervalSeconds * 1000
-    );
+    const at = this.ui.tab === "deploy" ? this.deploy.updatedAt : this.lastRefresh;
+    return Date.now() - at > this.cfg().refreshIntervalSeconds * 1000;
   }
 
   // ---------- Accounts ----------
@@ -611,7 +639,7 @@ class PrStatusViewProvider
         { clearSessionPreference: true, createIfNone: true },
       );
       await this.setUi({ accountKey: `${providerId}:${session.account.id}` });
-      this.refresh(true);
+      this.refreshActive(true);
     } catch (e) {
       vscode.window.showErrorMessage(
         `PR Status: sign-in failed: ${(e as Error).message}`,
@@ -633,7 +661,7 @@ class PrStatusViewProvider
       await this.setUi({
         accountKey: `${acct?.providerId ?? "github"}:${session.account.id}`,
       });
-      this.refresh(true);
+      this.refreshActive(true);
     } catch (e) {
       vscode.window.showErrorMessage(
         `PR Status: sign-in failed: ${(e as Error).message}`,
@@ -666,6 +694,12 @@ class PrStatusViewProvider
   }
 
   // ---------- Data ----------
+
+  /** Refreshes the tab on screen. */
+  async refreshActive(force: boolean): Promise<void> {
+    if (this.ui.tab !== "deploy") return this.refresh(force);
+    if (this.view && (force || !this.deploy.loading)) await this.deploy.refresh();
+  }
 
   async refresh(force: boolean): Promise<void> {
     if (!this.view) return;
@@ -810,6 +844,7 @@ class PrStatusViewProvider
         compact: cfg.compact,
         groupByRepo: cfg.groupByRepo,
         about: this.about(),
+        deploy: this.deploy.payload(),
       },
     });
   }

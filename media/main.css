@@ -209,3 +209,67 @@ button.secondary:disabled { opacity: 0.5; cursor: default; }
 .copy-item { display: flex; justify-content: space-between; gap: 16px; }
 .copy-item.current { font-weight: 600; }
 .copy-count { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* ---------- tabs ---------- */
+.tabs { display: flex; gap: 2px; padding-top: 6px; border-bottom: 1px solid var(--border); }
+.tab {
+  flex: 1; background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer;
+  color: var(--muted); font: inherit; padding: 5px 4px; margin-bottom: -1px;
+}
+.tab:hover { color: var(--vscode-foreground); }
+.tab.active { color: var(--vscode-foreground); border-bottom-color: var(--vscode-focusBorder); font-weight: 600; }
+.pane[hidden], .row[hidden] { display: none; }
+
+/* ---------- Deployments tab ---------- */
+.mini-input { flex: 0 0 90px; height: 24px; margin-bottom: 0; }
+.small-label { flex: none; font-size: 0.9em; }
+.aws-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px; padding: 5px 0; font-size: 0.9em; border-bottom: 1px solid var(--border); }
+.aws-bar.warn-bar .aws-msg { color: var(--run); }
+.aws-bar .actions { margin-top: 0; }
+.summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.chip { font-size: 0.88em; border-radius: 10px; padding: 0 7px; line-height: 1.6; border: 1px solid var(--border); white-space: nowrap; }
+.chip.st-failing { color: var(--bad); }
+.chip.st-running, .chip.st-waiting { color: var(--run); }
+.chip.st-ready { color: var(--ok); }
+.hint { margin: 8px 0; font-size: 0.92em; }
+.card.st-waiting { border-left-color: var(--run); }
+
+.stage-track { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 4px; font-size: 0.88em; margin-top: 6px; }
+.stage { white-space: nowrap; }
+.stage.local { color: var(--run); }
+.stage.deployed { color: var(--ok); }
+.stage.partial { color: var(--run); }
+.stage.not-yet { color: var(--muted); }
+.stage.unknown { color: var(--muted); opacity: 0.7; }
+.stage.reverted, .stage.failed { color: var(--bad); }
+.stage-sep { color: var(--rest); letter-spacing: -1px; }
+.pipelines .pipe { display: grid; grid-template-columns: minmax(70px, 30%) 1fr; gap: 6px; padding: 2px 0; border-top: 1px dashed var(--border); }
+.pipe-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-foreground); }
+.pipe-stages { display: flex; flex-wrap: wrap; gap: 2px 10px; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.act {
+  font: inherit; font-size: 0.88em; cursor: pointer; border-radius: 3px; padding: 1px 7px;
+  background: var(--vscode-button-secondaryBackground, var(--vscode-dropdown-background));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-button-border, var(--border));
+}
+.act:hover { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground)); }
+
+/* Deployments: Local → Merged → stages, as boxes; dates live in the tooltips. */
+.steps { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 3px; margin-top: 7px; font-size: 0.86em; }
+.step { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; cursor: default; }
+.step .box {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 0.85em; height: 0.85em; box-sizing: border-box; border-radius: 2px; border: 1px solid currentColor;
+  font-size: 1em; line-height: 1; font-weight: 700;
+}
+.step.done { color: var(--ok); }
+.step.done .box { background: var(--ok); border-color: var(--ok); color: var(--vscode-editor-background, #1e1e1e); }
+.step.todo, .step.partial { color: var(--run); }
+.step.bad { color: var(--bad); }
+.step.bad .box { background: var(--bad); border-color: var(--bad); color: var(--vscode-editor-background, #1e1e1e); }
+.arrow { color: var(--muted); padding: 0 1px; }
+.pipe-stages .step { font-size: 0.95em; }
+.step .box { font-size: inherit; }
+.step .box:not(:empty) { font-size: 0.7em; width: 1.2em; height: 1.2em; }

@@ -132,7 +132,25 @@
   const summary = h('div', { class: 'summary' });
   const list = h('div', { class: 'list' });
   const footer = h('div', { class: 'footer muted' });
-  app.append(controls, summary, list, footer);
+  const prsPane = h('div', { class: 'pane' }, controls, summary, list);
+  // @ts-ignore: set by deploy.js, loaded first
+  const deploy = window.PrStatusDeploy.create({ h, send, setState, open, ago });
+  const tabBtn = (id, label) => h('button', { class: 'tab', role: 'tab', 'data-tab': id, onclick: () => { if (data && data.ui.tab !== id) setState({ tab: id }); } }, label);
+  const tabs = h('div', { class: 'tabs', role: 'tablist' }, tabBtn('prs', 'Pull Requests'), tabBtn('deploy', 'Deployments'));
+  app.append(tabs, prsPane, deploy.el, footer);
+
+  /** Shows the active tab and draws only that one. */
+  function renderTabs() {
+    const active = data.ui.tab === 'deploy' ? 'deploy' : 'prs';
+    for (const b of tabs.children) {
+      const on = b.getAttribute('data-tab') === active;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-selected', String(on));
+    }
+    prsPane.hidden = active !== 'prs';
+    deploy.el.hidden = active !== 'deploy';
+    return active;
+  }
 
   function renderFooter() {
     const a = data.about;
@@ -514,11 +532,10 @@
   window.addEventListener('message', (e) => {
     if (e.data?.type !== 'update') return;
     data = e.data.payload;
-    renderControls();
-    renderSummary();
-    renderList();
+    if (renderTabs() === 'deploy') deploy.render(data);
+    else { renderControls(); renderSummary(); renderList(); }
     renderFooter();
   });
-  setInterval(() => { if (data) renderSummary(); }, 1000);
+  setInterval(() => { if (!data) return; if (data.ui.tab === 'deploy') deploy.tick(); else renderSummary(); }, 1000);
   send({ type: 'ready' });
 })();

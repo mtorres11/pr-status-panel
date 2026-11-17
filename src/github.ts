@@ -45,7 +45,7 @@ export class GitHubError extends Error {
   }
 }
 
-async function graphql<T>(
+export async function graphql<T>(
   api: ApiTarget,
   query: string,
   variables: Record<string, unknown>,
