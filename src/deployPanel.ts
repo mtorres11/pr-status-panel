@@ -1,26 +1,28 @@
-// The Deployments tab on the extension side: state, webview messages, AWS settings and refresh.
-// The panel provider owns GitHub sign-in and posting; this class asks it through DeployHost.
+// The Deployments tab on the extension side: state, its webview actions, AWS settings and refresh.
+// The panel owns GitHub sign-in and posting; this class asks it through DeployHost.
 
-import * as vscode from "vscode";
-import { AwsConfig, listProfiles } from "./awsCli";
+import { listProfiles } from "./awsCli";
+import { awsConfig, awsLoginCommand, ignoredStages, pipelinePrefix } from "./config";
 import { DeployUi } from "./deployFilters";
 import { AwsStatus, DeployPr, DeployService } from "./deployService";
 import type { ApiTarget } from "./github";
-import { CFG, userSetting } from "./userSettings";
-import { safeRegex } from "./validate";
+import type { HostUi, Settings } from "./ports";
+import type { DeployPayload } from "./protocol";
 
 export interface DeployHost {
   /** Signed-in GitHub API and login, or undefined when signed out. */
   github(): Promise<{ api: ApiTarget; viewer: string } | undefined>;
   ui(): DeployUi;
   post(): void;
-  settings(): {
+  config(): {
     teamMembers: string[];
     organizations: string[];
     favoriteRepos: string[];
     ticketPattern: string;
     jiraBaseUrl: string;
   };
+  settings: Settings;
+  hostUi: HostUi;
 }
 
 interface DeployState {
@@ -51,45 +53,6 @@ export class DeployPanel {
     return this.state.updatedAt ?? 0;
   }
 
-  /** Handles a Deployments message from the webview; false when it is not one of ours. */
-  async handle(m: { type: string }): Promise<boolean> {
-    if (m.type === "awsProfile") await this.pickProfile();
-    else if (m.type === "awsSignIn") await this.signIn();
-    else return false;
-    return true;
-  }
-
-  private awsConfig(): AwsConfig | undefined {
-    if (!userSetting("aws.enabled", true)) return undefined;
-    const cliPath = String(userSetting("aws.cliPath", "aws")).trim() || "aws";
-    const profile = String(userSetting("aws.profile", "")).trim();
-    const region =
-      String(userSetting("aws.region", "us-east-1")).trim() || "us-east-1";
-    if (
-      !/^[\w./~ -]{1,200}$/.test(cliPath) ||
-      !/^[\w.@+-]{0,128}$/.test(profile) ||
-      !/^[a-z0-9-]{1,30}$/.test(region)
-    )
-      return undefined;
-    return { cliPath, profile, region };
-  }
-
-  private pipelinePrefix(repo: string): string {
-    const map = userSetting<Record<string, unknown>>(
-      "aws.pipelinePrefixes",
-      {},
-    );
-    const v = map[repo];
-    return typeof v === "string" && v.trim()
-      ? v.trim()
-      : `${repo.split("/")[1]}-`;
-  }
-
-  private ignoreStages(): RegExp | undefined {
-    const src = String(userSetting("aws.ignoreStages", "^source$"));
-    return src ? safeRegex(src, "i") : undefined;
-  }
-
   async refresh(): Promise<void> {
     const gen = ++this.generation;
     this.state.loading = true;
@@ -114,7 +77,8 @@ export class DeployPanel {
   private async load(): Promise<Partial<DeployState>> {
     const gh = await this.host.github();
     if (!gh) return { prs: [], error: undefined, hint: undefined };
-    const s = this.host.settings();
+    const s = this.host.config();
+    const settings = this.host.settings;
     const result = await this.service.load({
       ui: this.host.ui(),
       api: gh.api,
@@ -126,56 +90,46 @@ export class DeployPanel {
       },
       ticketPattern: s.ticketPattern,
       jiraBaseUrl: s.jiraBaseUrl,
-      aws: this.awsConfig(),
-      pipelinePrefix: (repo) => this.pipelinePrefix(repo),
-      ignoreStages: this.ignoreStages(),
+      aws: awsConfig(settings),
+      pipelinePrefix: (repo) => pipelinePrefix(settings, repo),
+      ignoreStages: ignoredStages(settings),
     });
     return { ...result, error: undefined, updatedAt: Date.now() };
   }
 
-  payload(): object {
+  payload(): DeployPayload {
     return {
       ...this.state,
-      profile: this.awsConfig()?.profile ?? "",
-      canSignIn: !!String(userSetting("aws.loginCommand", "")).trim(),
+      profile: awsConfig(this.host.settings)?.profile ?? "",
+      canSignIn: !!awsLoginCommand(this.host.settings),
     };
   }
 
   /** Lets the user pick one of the AWS CLI's profiles (names only) and saves it in user settings. */
-  private async pickProfile(): Promise<void> {
-    const cliPath = this.awsConfig()?.cliPath ?? "aws";
+  async pickProfile(): Promise<void> {
+    const cliPath = awsConfig(this.host.settings)?.cliPath ?? "aws";
     const profiles = await listProfiles(cliPath);
     if (!profiles.length) {
-      vscode.window.showWarningMessage(
+      this.host.hostUi.warn(
         "PR Status: the AWS CLI has no profiles yet. Sign in to AWS first, then pick a profile.",
       );
       return;
     }
-    const pick = await vscode.window.showQuickPick(profiles, {
-      placeHolder:
-        "AWS profile for reading CodePipeline (the account that owns the pipelines)",
-    });
-    if (!pick) return;
-    await vscode.workspace
-      .getConfiguration(CFG)
-      .update("aws.profile", pick, vscode.ConfigurationTarget.Global);
+    const pick = await this.host.hostUi.pick(
+      profiles.map((label) => ({ label })),
+      "AWS profile for reading CodePipeline (the account that owns the pipelines)",
+    );
+    if (pick) await this.host.settings.update("aws.profile", pick.label);
   }
 
   /** Runs the user's own sign-in command (user setting) in a terminal. */
-  private async signIn(): Promise<void> {
-    const cmd = String(userSetting("aws.loginCommand", "")).trim();
+  signIn(): void {
+    const cmd = awsLoginCommand(this.host.settings);
     if (!cmd) {
-      await vscode.commands.executeCommand(
-        "workbench.action.openSettings",
-        "prStatus.aws.loginCommand",
-      );
+      this.host.hostUi.openSettings("prStatus.aws.loginCommand");
       return;
     }
-    const terminal = vscode.window.createTerminal({ name: "AWS sign-in" });
-    terminal.show();
-    terminal.sendText(cmd);
-    vscode.window.showInformationMessage(
-      "PR Status: finish the AWS sign-in in the terminal, then press Refresh in the panel.",
-    );
+    this.host.hostUi.runInTerminal("AWS sign-in", cmd);
+    this.host.hostUi.info("PR Status: finish the AWS sign-in in the terminal, then press Refresh in the panel.");
   }
 }

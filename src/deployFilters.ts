@@ -1,7 +1,7 @@
 // Deployments tab filters: the stored UI state and the GitHub searches it turns into.
 
 import { parsePrRef, ticketKeyIn } from "./ticketLinks";
-import { isLogin, isRepo } from "./validate";
+import { isLogin, isRepo, oneOf, pickValid } from "./validate";
 
 const TABS = ["prs", "deploy"] as const;
 const STATES = ["all", "open", "merged"] as const;
@@ -44,10 +44,10 @@ const isWho = (v: unknown) =>
   v === "@me" || v === "@team" || v === "@anyone" || isLogin(v);
 
 const VALID: Record<keyof DeployUi, (v: unknown) => boolean> = {
-  tab: (v) => TABS.includes(v as DeployUi["tab"]),
+  tab: oneOf(TABS),
   deployWho: isWho,
-  deployWhen: (v) => WHEN.includes(v as number),
-  deployState: (v) => STATES.includes(v as DeployUi["deployState"]),
+  deployWhen: oneOf(WHEN),
+  deployState: oneOf(STATES),
   deployRepo: (v) => v === "*" || isRepo(v),
   deployBranch: (v) => typeof v === "string" && BRANCH_RE.test(v),
   deployFind: (v) => typeof v === "string" && v.length <= 300,
@@ -56,12 +56,7 @@ const VALID: Record<keyof DeployUi, (v: unknown) => boolean> = {
 
 /** Keeps only valid Deployments UI keys from a webview message or stored state. */
 export function deployPatch(p: Record<string, unknown>): Partial<DeployUi> {
-  const out: Record<string, unknown> = {};
-  for (const [k, ok] of Object.entries(VALID)) {
-    const v = typeof p[k] === "string" && k !== "deployStage" ? (p[k] as string).trim() : p[k];
-    if (v !== undefined && ok(v)) out[k] = v;
-  }
-  return out as Partial<DeployUi>;
+  return pickValid<DeployUi>(p, VALID, (k, v) => (typeof v === "string" && k !== "deployStage" ? v.trim() : v));
 }
 
 export interface SearchContext {

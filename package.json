@@ -248,7 +248,7 @@
     "package": "npm run compile && vsce package --no-dependencies -o pr-status-panel.vsix",
     "build:test": "node -e \"require('fs').rmSync('out-test',{recursive:true,force:true})\" && tsc -p tsconfig.test.json",
     "test": "npm run build:test && node --test \"out-test/test/**/*.test.js\"",
-    "test:coverage": "npm run build:test && node --test --experimental-test-coverage --test-coverage-include=\"out-test/src/**\" --test-coverage-exclude=\"out-test/src/extension.js\" --test-coverage-exclude=\"out-test/src/deployPanel.js\" --test-coverage-lines=90 --test-coverage-branches=80 --test-coverage-functions=90 \"out-test/test/**/*.test.js\""
+    "test:coverage": "npm run build:test && node --test --experimental-test-coverage --test-coverage-include=\"out-test/src/**\" --test-coverage-exclude=\"out-test/src/extension.js\" --test-coverage-exclude=\"out-test/src/deployPanel.js\" --test-coverage-exclude=\"out-test/src/vscodeAdapters.js\" --test-coverage-lines=90 --test-coverage-branches=80 --test-coverage-functions=90 \"out-test/test/**/*.test.js\""
   },
   "devDependencies": {
     "@types/node": "^20.14.0",

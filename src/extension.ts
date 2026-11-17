@@ -12,50 +12,31 @@ import {
   UpdateMethod,
   updatePullRequestBranch,
 } from "./github";
-import { COPY_FORMATS, COPY_GROUPS, CopyFormat, CopyGroup, copyText, inGroup } from "./copy";
+import { CopyFormat, copyText, inGroup } from "./copy";
 import { PrView, toView } from "./model";
 import { jiraOrigin, ticketUrl } from "./ticketLinks";
-import { isHttpsUrl, isLogin, isRepo, logins, repos } from "./validate";
-import { DEFAULT_DEPLOY_UI, deployPatch, DeployUi, DISPLAY_ONLY_KEYS } from "./deployFilters";
+import { isHttpsUrl, isLogin } from "./validate";
+import { DISPLAY_ONLY_KEYS } from "./deployFilters";
 import { DeployPanel } from "./deployPanel";
 import { TtlCache } from "./ttlCache";
-import { CFG, userSetting } from "./userSettings";
-
-const SHOW_MODES = ["authored", "review", "assigned", "all"] as const;
-const SORT_MODES = ["attention", "updated", "ticket"] as const;
+import { fetchSnapshot, PanelConfig, readConfig } from "./config";
+import type { Auth, AuthAccount, HostUi, KeyValueStore, Settings } from "./ports";
+import { HostMessage, MessageHandlers, MessageOf, routeMessage } from "./protocol";
+import { storedUi, UiState, validPatch } from "./uiState";
+import { CFG, mementoStore, vscodeAuth, vscodeSettings, vscodeUi } from "./vscodeAdapters";
 
 const SCOPES = ["repo", "read:org"];
 
-type ShowMode = "authored" | "review" | "assigned" | "all";
-type SortMode = "attention" | "updated" | "ticket";
-
-interface UiState extends DeployUi {
-  accountKey?: string;
-  author: string; // '@me' | '@team' | login
-  repo: string; // '*' | 'owner/name'
-  show: ShowMode;
-  drafts: boolean;
-  sort: SortMode;
-  /** Which PRs "Copy links" takes. */
-  copyGroup: CopyGroup;
-  /** How the copied text looks. */
-  copyFormat: CopyFormat;
-}
-
-const DEFAULT_UI: Omit<UiState, keyof DeployUi> = {
-  author: "@me",
-  repo: "*",
-  show: "authored",
-  drafts: true,
-  sort: "attention",
-  copyGroup: "approval",
-  copyFormat: "links",
+const COPIED_AS: Record<CopyFormat, string> = {
+  links: "",
+  ticket: " with tickets and titles",
+  markdown: " as a Markdown list",
 };
 
 interface AccountOption {
   key: string;
   providerId: string;
-  account: vscode.AuthenticationSessionAccountInformation;
+  account: AuthAccount;
   label: string;
 }
 
@@ -71,27 +52,13 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("prStatus.addAccount", () =>
       provider.addAccount(),
     ),
-    vscode.commands.registerCommand("prStatus.openSettings", () =>
-      vscode.commands.executeCommand(
-        "workbench.action.openSettings",
-        `@ext:${context.extension.id}`,
-      ),
-    ),
+    vscode.commands.registerCommand("prStatus.openSettings", () => provider.openSettings()),
     provider,
   );
 }
 
 export function deactivate(): void {
   /* nothing */
-}
-
-/**
- * GitHub Enterprise Server URL from VS Code's own "github-enterprise.uri" setting (the server VS Code's GitHub
- * Enterprise sign-in uses), user level only so a workspace can never redirect the token. "" unless https.
- */
-function enterpriseUri(): string {
-  const v = userSetting<unknown>("uri", undefined, "github-enterprise");
-  return isHttpsUrl(v) ? v : "";
 }
 
 class PrStatusViewProvider
@@ -113,8 +80,14 @@ class PrStatusViewProvider
   private readonly approvalsCache = new TtlCache<number | undefined>(3_600_000);
 
   readonly deploy: DeployPanel;
+  private readonly hostUi: HostUi;
+  private readonly settings: Settings = vscodeSettings;
+  private readonly auth: Auth = vscodeAuth;
+  private readonly store: KeyValueStore;
 
   constructor(private readonly context: vscode.ExtensionContext) {
+    this.hostUi = vscodeUi(context.extension.id);
+    this.store = mementoStore(context.globalState);
     this.deploy = new DeployPanel({
       github: async () => {
         await this.loadAccounts();
@@ -126,7 +99,9 @@ class PrStatusViewProvider
       },
       ui: () => this.ui,
       post: () => this.post(),
-      settings: () => this.cfg(),
+      config: () => this.cfg(),
+      settings: this.settings,
+      hostUi: this.hostUi,
     });
     this.lastSettings = this.settingsSnapshot();
     this.disposables.push(
@@ -148,6 +123,10 @@ class PrStatusViewProvider
     );
   }
 
+  openSettings(): void {
+    this.hostUi.openSettings("");
+  }
+
   dispose(): void {
     if (this.timer) clearInterval(this.timer);
     this.disposables.forEach((d) => d.dispose());
@@ -164,7 +143,7 @@ class PrStatusViewProvider
     };
     view.webview.html = this.html(view.webview, mediaRoot);
     view.webview.onDidReceiveMessage(
-      (m) => this.onMessage(m),
+      (m) => routeMessage(this.handlers(), m),
       undefined,
       this.disposables,
     );
@@ -204,143 +183,77 @@ class PrStatusViewProvider
 </body></html>`;
   }
 
-  private async onMessage(m: {
-    type: string;
-    [k: string]: unknown;
-  }): Promise<void> {
-    if (await this.deploy.handle(m)) return;
-    switch (m.type) {
-      case "ready":
+  /** What each webview message does. */
+  private handlers(): MessageHandlers {
+    return {
+      ready: () => {
         this.post();
-        this.refreshActive(true);
-        break;
-      case "refresh":
-        this.refreshActive(true);
-        break;
-      case "setState": {
-        const patch = this.validPatch(m.patch);
-        if (patch.author === "@other") {
-          const login = await vscode.window.showInputBox({
-            prompt: "GitHub username",
-            placeHolder: "octocat",
-            validateInput: (v) =>
-              isLogin(v.trim().replace(/^@/, ""))
-                ? undefined
-                : "Not a valid GitHub username",
-          });
-          const clean = login?.trim().replace(/^@/, "");
-          if (!isLogin(clean)) {
-            this.post();
-            return;
-          }
-          patch.author = clean;
-        }
-        if (!Object.keys(patch).length) {
-          this.post();
-          return;
-        }
-        await this.setUi(patch);
-        await this.afterUiChange(Object.keys(patch));
-        break;
-      }
-      case "copyUrl": {
-        // URL comes from our own PR data, never from the webview message.
-        const pr = this.prs.find((p) => p.id === m.prId);
-        const url = m.which === "ticket" ? pr?.ticketUrl : pr?.url;
-        if (!pr || !isHttpsUrl(url)) return;
-        await vscode.env.clipboard.writeText(url);
-        vscode.window.setStatusBarMessage(
-          `$(check) Copied ${m.which === "ticket" ? `${pr.ticket} link` : `PR #${pr.number} link`}`,
-          2500,
-        );
-        break;
-      }
-      case "copyLinks":
-        await this.copyLinks(m.ids, m.group, m.format);
-        break;
-      case "rerun":
-        await this.rerun(String(m.prId ?? ""), m.mode === "failed");
-        break;
-      case "updateBranch":
-        await this.updateBranch(String(m.prId ?? ""), m.method === "rebase" ? "REBASE" : "MERGE");
-        break;
-      case "configureJira": {
-        const input = await vscode.window.showInputBox({
-          title: "PR Status: Jira site for ticket links",
-          prompt:
-            "Paste your Jira site or any Jira link (e.g. your board URL). Only the site part is kept.",
-          placeHolder: "https://yourcompany.atlassian.net",
-          ignoreFocusOut: true,
-          validateInput: (v) =>
-            jiraOrigin(v) ? undefined : "Enter a valid Jira URL",
-        });
-        const origin = input ? jiraOrigin(input) : "";
-        if (!origin) return;
-        await vscode.workspace
-          .getConfiguration(CFG)
-          .update("jiraBaseUrl", origin, vscode.ConfigurationTarget.Global);
-        const ticket = String(m.ticket ?? "");
-        const url = ticketUrl(origin, ticket);
-        if (url && /^[A-Za-z0-9_-]{1,64}$/.test(ticket)) vscode.env.openExternal(vscode.Uri.parse(url));
-        break;
-      }
-      case "open": {
-        // Only https links (PRs, check runs, Jira) are handed to the browser.
-        if (isHttpsUrl(m.url)) vscode.env.openExternal(vscode.Uri.parse(m.url));
-        break;
-      }
-      case "toggleFavorite": {
-        const repo = m.repo;
-        if (!isRepo(repo)) return;
-        const cfg = vscode.workspace.getConfiguration(CFG);
-        const favs = new Set(cfg.get<string[]>("favoriteRepos", []));
-        if (favs.has(repo)) favs.delete(repo);
-        else favs.add(repo);
-        await cfg.update(
-          "favoriteRepos",
-          [...favs].sort(),
-          vscode.ConfigurationTarget.Global,
-        );
-        break;
-      }
-      case "addAccount":
-        await this.addAccount();
-        break;
-      case "signIn":
-        await this.signIn();
-        break;
-      case "openSettings":
-        vscode.commands.executeCommand("prStatus.openSettings");
-        break;
-    }
+        void this.refreshActive(true);
+      },
+      refresh: () => this.refreshActive(true),
+      setState: (m) => this.setState(m.patch),
+      copyUrl: (m) => this.copyUrl(m),
+      copyLinks: (m) => this.copyLinks(m),
+      rerun: (m) => this.rerun(m.prId, m.failedOnly),
+      updateBranch: (m) => this.updateBranch(m.prId, m.method),
+      configureJira: (m) => this.configureJira(m.ticket),
+      open: (m) => this.hostUi.openUrl(m.url),
+      toggleFavorite: (m) => this.toggleFavorite(m.repo),
+      addAccount: () => this.addAccount(),
+      signIn: () => this.signIn(),
+      openSettings: () => this.hostUi.openSettings(""),
+      awsProfile: () => this.deploy.pickProfile(),
+      awsSignIn: () => this.deploy.signIn(),
+    };
   }
 
-  /** Keeps only known UI keys with valid values from a webview message. */
-  private validPatch(raw: unknown): Partial<UiState> {
-    const p = (raw && typeof raw === "object" ? raw : {}) as Record<
-      string,
-      unknown
-    >;
-    const out: Partial<UiState> = {};
-    if (
-      typeof p.accountKey === "string" &&
-      this.accounts.some((a) => a.key === p.accountKey)
-    )
-      out.accountKey = p.accountKey;
-    if (
-      p.author === "@me" ||
-      p.author === "@team" ||
-      p.author === "@other" ||
-      isLogin(p.author)
-    )
-      out.author = p.author as string;
-    if (p.repo === "*" || isRepo(p.repo)) out.repo = p.repo as string;
-    if (SHOW_MODES.includes(p.show as ShowMode)) out.show = p.show as ShowMode;
-    if (SORT_MODES.includes(p.sort as SortMode)) out.sort = p.sort as SortMode;
-    if (typeof p.drafts === "boolean") out.drafts = p.drafts;
-    if (COPY_GROUPS.includes(p.copyGroup as CopyGroup)) out.copyGroup = p.copyGroup as CopyGroup;
-    if (COPY_FORMATS.includes(p.copyFormat as CopyFormat)) out.copyFormat = p.copyFormat as CopyFormat;
-    return { ...out, ...deployPatch(p) };
+  /** Applies a UI change from the webview; "Other user…" first asks for the login. */
+  private async setState(raw: Record<string, unknown>): Promise<void> {
+    const patch = validPatch(raw, this.accounts.map((a) => a.key));
+    if (patch.author === "@other") {
+      const login = await this.hostUi.prompt({
+        prompt: "GitHub username",
+        placeHolder: "octocat",
+        validate: (v) => (isLogin(v.trim().replace(/^@/, "")) ? undefined : "Not a valid GitHub username"),
+      });
+      const clean = login?.trim().replace(/^@/, "");
+      if (!isLogin(clean)) return this.post();
+      patch.author = clean;
+    }
+    if (!Object.keys(patch).length) return this.post();
+    await this.setUi(patch);
+    await this.afterUiChange(Object.keys(patch));
+  }
+
+  /** Copies one PR or ticket link. The URL comes from our own PR data, never from the webview message. */
+  private async copyUrl(m: MessageOf<"copyUrl">): Promise<void> {
+    const pr = this.prs.find((p) => p.id === m.prId);
+    const url = m.which === "ticket" ? pr?.ticketUrl : pr?.url;
+    if (!pr || !isHttpsUrl(url)) return;
+    await this.hostUi.copy(url, `Copied ${m.which === "ticket" ? `${pr.ticket} link` : `PR #${pr.number} link`}`);
+  }
+
+  /** Saves the Jira site for ticket links, then opens the ticket that was clicked. */
+  private async configureJira(ticket: string): Promise<void> {
+    const input = await this.hostUi.prompt({
+      title: "PR Status: Jira site for ticket links",
+      prompt: "Paste your Jira site or any Jira link (e.g. your board URL). Only the site part is kept.",
+      placeHolder: "https://yourcompany.atlassian.net",
+      ignoreFocusOut: true,
+      validate: (v) => (jiraOrigin(v) ? undefined : "Enter a valid Jira URL"),
+    });
+    const origin = input ? jiraOrigin(input) : "";
+    if (!origin) return;
+    await this.settings.update("jiraBaseUrl", origin);
+    const url = ticketUrl(origin, ticket);
+    if (url && /^[A-Za-z0-9_-]{1,64}$/.test(ticket)) this.hostUi.openUrl(url);
+  }
+
+  private async toggleFavorite(repo: string): Promise<void> {
+    const favs = new Set(this.settings.get<string[]>("favoriteRepos", []));
+    if (favs.has(repo)) favs.delete(repo);
+    else favs.add(repo);
+    await this.settings.update("favoriteRepos", [...favs].sort());
   }
 
   /** Fetches again only what a UI change affects. */
@@ -380,29 +293,20 @@ class PrStatusViewProvider
   // ---------- Actions ----------
 
   /**
-   * Copies PR links (optionally with titles) for an approval request.
-   * The webview sends PR ids in display order; only known PRs that still need
-   * approval are used, and the text is built here from our own data.
-   */
-  /**
    * Copy the links of the shown PRs in one group, in the order shown. Every id is checked
    * against the group again here, so the panel can never copy PRs outside it.
    */
-  private async copyLinks(rawIds: unknown, rawGroup: unknown, rawFormat: unknown): Promise<void> {
-    const group: CopyGroup = COPY_GROUPS.includes(rawGroup as CopyGroup) ? (rawGroup as CopyGroup) : "approval";
-    const format: CopyFormat = COPY_FORMATS.includes(rawFormat as CopyFormat) ? (rawFormat as CopyFormat) : "links";
-    const ids = Array.isArray(rawIds) ? rawIds.filter((v): v is string => typeof v === "string") : [];
+  private async copyLinks(m: MessageOf<"copyLinks">): Promise<void> {
     const byId = new Map(this.prs.map((p) => [p.id, p]));
-    const prs = ids
+    const prs = m.ids
       .map((id) => byId.get(id))
-      .filter((p): p is PrView => !!p && inGroup(p, group) && isHttpsUrl(p.url) && (!p.ticketUrl || isHttpsUrl(p.ticketUrl)));
+      .filter((p): p is PrView => !!p && inGroup(p, m.group) && isHttpsUrl(p.url) && (!p.ticketUrl || isHttpsUrl(p.ticketUrl)));
     if (!prs.length) {
-      vscode.window.showInformationMessage("PR Status: no PRs in this group in the list.");
+      this.hostUi.info("PR Status: no PRs in this group in the list.");
       return;
     }
-    await vscode.env.clipboard.writeText(copyText(prs, format, group === "all"));
-    const how = format === "links" ? "" : format === "ticket" ? " with tickets and titles" : " as a Markdown list";
-    vscode.window.showInformationMessage(`PR Status: copied ${prs.length} PR link${prs.length === 1 ? "" : "s"}${how}.`);
+    await this.hostUi.copy(copyText(prs, m.format, m.group === "all"));
+    this.hostUi.info(`PR Status: copied ${prs.length} PR link${prs.length === 1 ? "" : "s"}${COPIED_AS[m.format]}.`);
   }
 
   /** Re-run failed jobs (or all jobs) of the GitHub Actions runs behind a PR's checks. */
@@ -412,7 +316,7 @@ class PrStatusViewProvider
     // "failed" needs a failed Actions run; "all" works for any PR with Actions runs, failing or not.
     const runIds = failedOnly ? pr.rerun.failedRunIds : pr.rerun.allRunIds;
     if (!runIds.length) {
-      vscode.window.showWarningMessage(
+      this.hostUi.warn(
         failedOnly
           ? `PR Status: none of the failing checks on #${pr.number} are GitHub Actions workflows yet. Try Re-run all checks.`
           : `PR Status: no GitHub Actions workflows are behind the checks on #${pr.number}, so nothing can be re-run from here.`,
@@ -422,25 +326,20 @@ class PrStatusViewProvider
     const what = failedOnly
       ? `the failed jobs in ${runIds.length} workflow run(s)`
       : `all jobs in ${runIds.length} workflow run(s)`;
-    const choice = await vscode.window.showWarningMessage(
+    const ok = await this.hostUi.confirm(
       `Re-run ${what} for ${pr.repo}#${pr.number}?`,
-      { modal: true, detail: pr.title },
+      pr.title,
       failedOnly ? "Re-run failed" : "Re-run all",
     );
-    if (!choice) return;
+    if (!ok) return;
 
     const target = await this.api();
     if (!target) {
-      vscode.window.showErrorMessage("PR Status: sign in to GitHub first.");
+      this.hostUi.error("PR Status: sign in to GitHub first.");
       return;
     }
     const errors: string[] = [];
-    await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: `Re-running checks for #${pr.number}…`,
-      },
-      async () => {
+    await this.hostUi.progress(`Re-running checks for #${pr.number}…`, async () => {
         for (const id of runIds) {
           try {
             await rerunWorkflowRun(target.api, pr.repo, id, failedOnly);
@@ -448,16 +347,15 @@ class PrStatusViewProvider
             errors.push(`run ${id}: ${(e as Error).message}`);
           }
         }
-      },
-    );
-    const ok = runIds.length - errors.length;
+    });
+    const restarted = runIds.length - errors.length;
     if (errors.length) {
-      vscode.window.showErrorMessage(
-        `PR Status: ${ok} of ${runIds.length} run(s) restarted. ${errors.join("; ")}`,
+      this.hostUi.error(
+        `PR Status: ${restarted} of ${runIds.length} run(s) restarted. ${errors.join("; ")}`,
       );
     } else {
-      vscode.window.showInformationMessage(
-        `PR Status: restarted ${ok} workflow run(s) for #${pr.number}.` +
+      this.hostUi.info(
+        `PR Status: restarted ${restarted} workflow run(s) for #${pr.number}.` +
           (pr.rerun.failedExternal
             ? ` ${pr.rerun.failedExternal} failing non-Actions check(s) were skipped.`
             : ""),
@@ -472,7 +370,7 @@ class PrStatusViewProvider
     const pr = this.prs.find((p) => p.id === prId);
     if (!pr) return;
     if (!pr.canUpdateBranch) {
-      vscode.window.showInformationMessage(
+      this.hostUi.info(
         `PR Status: #${pr.number} is up to date with ${pr.baseRef}, or you can't push to its branch.`,
       );
       return;
@@ -486,26 +384,25 @@ class PrStatusViewProvider
         : `Merges ${pr.baseRef} into the branch with a merge commit, like GitHub's Update branch button.`,
       "Checks will run again. If the repository dismisses stale approvals, existing approvals are removed.",
     ].join("\n");
-    const choice = await vscode.window.showWarningMessage(
+    const ok = await this.hostUi.confirm(
       `${rebase ? "Rebase" : "Update"} ${pr.repo}#${pr.number} onto the latest ${pr.baseRef}?`,
-      { modal: true, detail },
+      detail,
       rebase ? "Rebase branch" : "Update branch",
     );
-    if (!choice) return;
+    if (!ok) return;
     const target = await this.api();
     if (!target) {
-      vscode.window.showErrorMessage("PR Status: sign in to GitHub first.");
+      this.hostUi.error("PR Status: sign in to GitHub first.");
       return;
     }
     try {
-      await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: `Updating #${pr.number} with ${pr.baseRef}…` },
-        () => updatePullRequestBranch(target.api, pr.id, pr.headOid, method),
+      await this.hostUi.progress(`Updating #${pr.number} with ${pr.baseRef}…`, () =>
+        updatePullRequestBranch(target.api, pr.id, pr.headOid, method),
       );
-      vscode.window.showInformationMessage(`PR Status: #${pr.number} is now up to date with ${pr.baseRef}.`);
+      this.hostUi.info(`PR Status: #${pr.number} is now up to date with ${pr.baseRef}.`);
     } catch (e) {
       const msg = (e as Error).message;
-      vscode.window.showErrorMessage(
+      this.hostUi.error(
         /expected head|head sha|not match/i.test(msg)
           ? `PR Status: #${pr.number} changed since the last refresh, so it was not updated. The list is refreshing; try again.`
           : `PR Status: could not update #${pr.number}: ${msg}`,
@@ -518,54 +415,19 @@ class PrStatusViewProvider
   // ---------- State ----------
 
   private get ui(): UiState {
-    const stored = this.context.globalState.get<Record<string, unknown>>(
-      "ui",
-      {},
-    );
-    const valid = this.validPatch(stored);
-    if (valid.author === "@other") delete valid.author;
-    // accountKey is only used as a lookup key; keep it even before accounts load.
-    if (typeof stored.accountKey === "string")
-      valid.accountKey = stored.accountKey;
-    // Before 0.8.0 there was only an "Add description" checkbox: it becomes the ticket format.
-    if (!valid.copyFormat && stored.addDescription === true) valid.copyFormat = "ticket";
-    return { ...DEFAULT_UI, ...DEFAULT_DEPLOY_UI, ...valid };
+    return storedUi(this.store.get("ui"));
   }
 
   private async setUi(patch: Partial<UiState>): Promise<void> {
-    await this.context.globalState.update("ui", { ...this.ui, ...patch });
+    await this.store.set("ui", { ...this.ui, ...patch });
   }
 
-  private cfg() {
-    const c = vscode.workspace.getConfiguration(CFG);
-    return {
-      refreshIntervalSeconds: Math.max(
-        15,
-        c.get<number>("refreshIntervalSeconds", 60),
-      ),
-      organizations: logins(c.get<unknown>("organizations", [])),
-      favoriteRepos: repos(c.get<unknown>("favoriteRepos", [])),
-      teamMembers: logins(c.get<unknown>("teamMembers", [])),
-      requiredApprovals: c.get<number>("requiredApprovals", 1),
-      requiredApprovalsPerRepo: c.get<Record<string, number>>(
-        "requiredApprovalsPerRepo",
-        {},
-      ),
-      ticketPattern: c.get<string>("ticketPattern", "[A-Z][A-Z0-9]+-\\d+"),
-      jiraBaseUrl: c.get<string>("jiraBaseUrl", ""),
-      ignoredChecks: c.get<string[]>("ignoredChecks", []),
-      ignoreBotThreads: c.get<boolean>("ignoreBotThreads", false),
-      groupByRepo: c.get<boolean>("groupByRepo", false),
-      compact: c.get<boolean>("compact", false),
-      enterpriseUri: enterpriseUri(),
-    };
+  private cfg(): PanelConfig {
+    return readConfig(this.settings);
   }
 
-  /** Settings that affect what is fetched (everything except favorites). */
   private settingsSnapshot(): string {
-    const { favoriteRepos: _ignored, ...rest } = this.cfg();
-    void _ignored;
-    return JSON.stringify(rest);
+    return fetchSnapshot(this.cfg());
   }
 
   private schedule(): void {
@@ -594,7 +456,7 @@ class PrStatusViewProvider
     const out: AccountOption[] = [];
     for (const providerId of this.providerIds()) {
       try {
-        const accts = await vscode.authentication.getAccounts(providerId);
+        const accts = await this.auth.accounts(providerId);
         for (const account of accts) {
           out.push({
             key: `${providerId}:${account.id}`,
@@ -614,50 +476,43 @@ class PrStatusViewProvider
     const providerId =
       this.providerIds().length > 1
         ? (
-            await vscode.window.showQuickPick(
+            await this.hostUi.pick(
               [
                 { label: "github.com", id: "github" },
                 { label: "GitHub Enterprise", id: "github-enterprise" },
               ],
-              { placeHolder: "Which GitHub?" },
+              "Which GitHub?",
             )
           )?.id
         : "github";
     if (!providerId) return;
     try {
-      const session = await vscode.authentication.getSession(
-        providerId,
-        SCOPES,
-        { clearSessionPreference: true, createIfNone: true },
-      );
+      const session = await this.auth.session(providerId, SCOPES, {
+        clearSessionPreference: true,
+        createIfNone: true,
+      });
+      if (!session) return;
       await this.setUi({ accountKey: `${providerId}:${session.account.id}` });
       this.refreshActive(true);
     } catch (e) {
-      vscode.window.showErrorMessage(
-        `PR Status: sign-in failed: ${(e as Error).message}`,
-      );
+      this.hostUi.error(`PR Status: sign-in failed: ${(e as Error).message}`);
     }
   }
 
   private async signIn(): Promise<void> {
     const acct = this.currentAccount();
     try {
-      const session = await vscode.authentication.getSession(
-        acct?.providerId ?? "github",
-        SCOPES,
-        {
-          createIfNone: true,
-          account: acct?.account,
-        },
-      );
+      const session = await this.auth.session(acct?.providerId ?? "github", SCOPES, {
+        createIfNone: true,
+        account: acct?.account,
+      });
+      if (!session) return;
       await this.setUi({
         accountKey: `${acct?.providerId ?? "github"}:${session.account.id}`,
       });
       this.refreshActive(true);
     } catch (e) {
-      vscode.window.showErrorMessage(
-        `PR Status: sign-in failed: ${(e as Error).message}`,
-      );
+      this.hostUi.error(`PR Status: sign-in failed: ${(e as Error).message}`);
     }
   }
 
@@ -669,11 +524,10 @@ class PrStatusViewProvider
   private async api(): Promise<{ api: ApiTarget; key: string } | undefined> {
     const acct = this.currentAccount();
     if (!acct) return undefined;
-    const session = await vscode.authentication.getSession(
-      acct.providerId,
-      SCOPES,
-      { account: acct.account, silent: true },
-    );
+    const session = await this.auth.session(acct.providerId, SCOPES, {
+      account: acct.account,
+      silent: true,
+    });
     if (!session) return undefined;
     const enterprise =
       acct.providerId === "github-enterprise"
@@ -809,7 +663,7 @@ class PrStatusViewProvider
       ...(acct ? this.repoListFor(acct.key) : []).filter(inScope),
       ...this.prs.map((p) => p.repo),
     ]);
-    void this.view.webview.postMessage({
+    const message: HostMessage = {
       type: "update",
       payload: {
         ui: { ...this.ui, accountKey: acct?.key },
@@ -828,6 +682,7 @@ class PrStatusViewProvider
         about: this.about(),
         deploy: this.deploy.payload(),
       },
-    });
+    };
+    void this.view.webview.postMessage(message);
   }
 }

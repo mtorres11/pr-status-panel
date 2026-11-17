@@ -53,3 +53,27 @@ export function safeRegex(src: string, flags = ""): RegExp | undefined {
     return undefined;
   }
 }
+
+/** A plain object from untrusted input, or an empty one. */
+export function asRecord(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
+
+/** A check that accepts only the values in `list`. */
+export function oneOf<T>(list: readonly T[]): (v: unknown) => v is T {
+  return (v: unknown): v is T => list.includes(v as T);
+}
+
+/** The fields of `p` that pass their rule, after `normalize`; unknown keys and failing values are dropped. */
+export function pickValid<T>(
+  p: Record<string, unknown>,
+  rules: { [K in keyof T]: (v: unknown) => boolean },
+  normalize: (key: string, v: unknown) => unknown = (_k, v) => v,
+): Partial<T> {
+  const out: Record<string, unknown> = {};
+  for (const [k, ok] of Object.entries(rules) as [string, (v: unknown) => boolean][]) {
+    const v = normalize(k, p[k]);
+    if (v !== undefined && ok(v)) out[k] = v;
+  }
+  return out as Partial<T>;
+}
