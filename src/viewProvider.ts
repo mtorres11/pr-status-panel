@@ -5,8 +5,8 @@ import { randomBytes } from "crypto";
 import * as vscode from "vscode";
 import type { Panel } from "./panel";
 
-/** Webview scripts in load order: shared helpers first, the PR tab last. */
-const SCRIPTS = ["deploy.js", "main.js"];
+/** Webview scripts in load order: shared helpers and the bridge first, the page last. */
+const SCRIPTS = ["dom.js", "bridge.js", "prCard.js", "deploy.js", "main.js"];
 
 export class PrStatusViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   private view?: vscode.WebviewView;

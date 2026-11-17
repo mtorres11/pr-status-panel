@@ -5,6 +5,7 @@ import { awsConfig, awsLoginCommand, ignoredStages, PanelConfig, pipelinePrefix 
 import type { DeployUi } from "./deployFilters";
 import { AwsStatus, DeployPr, DeployService } from "./deployService";
 import type { Connection } from "./githubAuth";
+import { summarize } from "./deploySummary";
 import { LatestWins } from "./latestWins";
 import type { HostUi, Settings } from "./ports";
 import type { DeployPayload } from "./protocol";
@@ -69,6 +70,7 @@ export class DeployTab {
   payload(): DeployPayload {
     return {
       ...this.state,
+      ...summarize(this.state.prs, this.deps.ui().deployStage),
       loading: this.loading,
       profile: awsConfig(this.deps.settings)?.profile ?? "",
       canSignIn: !!awsLoginCommand(this.deps.settings),

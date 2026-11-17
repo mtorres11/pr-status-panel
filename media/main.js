@@ -1,40 +1,52 @@
 // @ts-check
+// The panel page: tabs, the PR tab's controls, list and "Copy links", and the footer. Loaded last.
 (function () {
-  const vscode = acquireVsCodeApi();
-  const app = document.getElementById('app');
+  /** @typedef {import('../src/protocol').Payload} Payload */
+  /** @typedef {import('../src/model').PrView} PrView */
+  /** @typedef {import('../src/copy').CopyGroup} CopyGroup */
 
   /** @type {any} */
-  let data = null;
-  const expanded = new Set();
+  const ns = (/** @type {any} */ (window)).PrStatus;
+  const { h, setOptions, row, signInState, ago } = ns.dom;
+  const { send, setState, open, onUpdate } = ns.bridge;
+  const { STATUS } = ns.prCard;
+
+  /** @type {Payload} */
+  let data;
   let repoMenuOpen = false;
   let repoSearch = '';
+  let copyMenuOpen = false;
+  /** PRs in the order they are shown in the list (set by renderList). @type {PrView[]} */
+  let displayedPrs = [];
 
-  // ---------- tiny DOM helper ----------
-  /**
-   * @param {string} tag
-   * @param {Record<string, any>} [attrs]
-   * @param {...(Node|string|null|undefined|false)} children
-   */
-  function h(tag, attrs, ...children) {
-    const el = document.createElement(tag);
-    for (const [k, v] of Object.entries(attrs || {})) {
-      if (v === undefined || v === null || v === false) continue;
-      if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
-      else if (k === 'class') el.className = v;
-      // The webview CSP blocks inline style attributes; set flex through the CSSOM instead.
-      else if (k === 'flex') el.style.flex = `${v} 1 0`;
-      else el.setAttribute(k, v === true ? '' : String(v));
-    }
-    for (const c of children.flat()) {
-      if (c === null || c === undefined || c === false) continue;
-      el.append(typeof c === 'string' ? document.createTextNode(c) : c);
-    }
-    return el;
+  const cards = ns.prCard.create({ rerender: () => renderList(), viewer: () => data.viewerLogin, compact: () => data.compact });
+  const deploy = ns.deploy.create();
+  const app = /** @type {HTMLElement} */ (document.getElementById('app'));
+
+  // ---------- Copy links: which PRs (group, membership comes with each PR) and how (format) ----------
+  /** [id, icon, menu label, button text for n PRs] @type {[CopyGroup, string, string, (n: number) => string][]} */
+  const COPY_GROUPS = [
+    ['approval', '⏳', 'Needing approval', (n) => `${n} needing approval`],
+    ['waiting', '◐', 'Waiting on review', (n) => `${n} waiting on review`],
+    ['ready', '✅', 'Ready to merge', (n) => `${n} ready to merge`],
+    ['failing', '✖', 'Failing checks', (n) => `${n} failing`],
+    ['changes', '✎', 'Changes requested', (n) => `${n} with changes requested`],
+    ['running', '◌', 'Checks running', (n) => `${n} running`],
+    ['drafts', '○', 'Drafts', (n) => `${n} draft${n === 1 ? '' : 's'}`],
+    ['behind', '⤓', 'Behind base branch', (n) => `${n} behind`],
+    ['queued', '⇢', 'In merge queue', (n) => `${n} in queue`],
+    ['all', '☰', 'All shown', (n) => `all ${n}`],
+  ];
+  const copyGroupOf = (id) => COPY_GROUPS.find((g) => g[0] === id) || COPY_GROUPS[0];
+  /** Shown PRs in a copy group, in list order. @param {CopyGroup} id */
+  const inGroup = (id) => displayedPrs.filter((p) => p.copyGroups.includes(id));
+
+  /** @param {CopyGroup} id */
+  function copyGroupLinks(id) {
+    const ids = inGroup(id).map((p) => p.id);
+    if (id !== data.ui.copyGroup) setState({ copyGroup: id });
+    if (ids.length) send({ type: 'copyLinks', ids, group: id, format: data.ui.copyFormat });
   }
-
-  const send = (msg) => vscode.postMessage(msg);
-  const setState = (patch) => send({ type: 'setState', patch });
-  const open = (url) => send({ type: 'open', url });
 
   // ---------- static skeleton ----------
   const accountSel = h('select', { title: 'Signed-in GitHub account', onchange: (e) => {
@@ -43,15 +55,8 @@
     setState({ accountKey: v });
   } });
   const authorSel = h('select', { title: 'Whose pull requests', onchange: (e) => setState({ author: e.target.value }) });
-  const showSel = h('select', { title: 'Which relationship to the PR', onchange: (e) => setState({ show: e.target.value }) },
-    h('option', { value: 'authored' }, 'Authored'),
-    h('option', { value: 'review' }, 'Review requested'),
-    h('option', { value: 'assigned' }, 'Assigned'),
-    h('option', { value: 'all' }, 'All of these'));
-  const sortSel = h('select', { title: 'Sort order', onchange: (e) => setState({ sort: e.target.value }) },
-    h('option', { value: 'attention' }, 'Needs attention'),
-    h('option', { value: 'updated' }, 'Last updated'),
-    h('option', { value: 'ticket' }, 'Ticket'));
+  const showSel = h('select', { title: 'Which relationship to the PR', onchange: (e) => setState({ show: e.target.value }) });
+  const sortSel = h('select', { title: 'Sort order', onchange: (e) => setState({ sort: e.target.value }) });
   const draftsChk = h('input', { type: 'checkbox', id: 'drafts', onchange: (e) => setState({ drafts: e.target.checked }) });
 
   const repoBtn = h('button', { class: 'combo-btn', title: 'Repository', onclick: () => {
@@ -64,51 +69,9 @@
   const repoList = h('div', { class: 'combo-list' });
   const repoMenu = h('div', { class: 'combo-menu', hidden: true }, repoInput, repoList);
   const repoCombo = h('div', { class: 'combo' }, repoBtn, repoMenu);
-  /** id of the PR whose ⚙ menu is open, if any */
-  let openMenuId = null;
-  document.addEventListener('click', (e) => {
-    const target = /** @type {HTMLElement} */ (e.target);
-    if (repoMenuOpen && !repoCombo.contains(target)) closeRepoMenu();
-    if (openMenuId && !target.closest('.pr-menu-wrap')) { openMenuId = null; renderList(); }
-    if (copyMenuOpen && !copySplit.contains(target)) { copyMenuOpen = false; renderShare(); }
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && openMenuId) { openMenuId = null; renderList(); }
-  });
   function closeRepoMenu() { repoMenuOpen = false; repoMenu.hidden = true; }
 
-  /** PRs in the order they are shown in the list (set by renderList). */
-  let displayedPrs = [];
-  /** Needs approval = not fully approved yet and not in the merge queue. */
-  const needsApproval = (p) => p.approvals.approved < p.approvals.required && !p.inMergeQueue;
-
-  // ---------- Copy links: what to copy (group) and how (format). Groups mirror src/copy.ts. ----------
-  /** [id, icon, menu label, button text for n PRs, test] */
-  const COPY_GROUPS = [
-    ['approval', '⏳', 'Needing approval', (n) => `${n} needing approval`, needsApproval],
-    ['waiting', '◐', 'Waiting on review', (n) => `${n} waiting on review`, (p) => p.status === 'waiting'],
-    ['ready', '✅', 'Ready to merge', (n) => `${n} ready to merge`, (p) => p.status === 'ready'],
-    ['failing', '✖', 'Failing checks', (n) => `${n} failing`, (p) => p.status === 'failing'],
-    ['changes', '✎', 'Changes requested', (n) => `${n} with changes requested`, (p) => p.status === 'changes'],
-    ['running', '◌', 'Checks running', (n) => `${n} running`, (p) => p.status === 'running'],
-    ['drafts', '○', 'Drafts', (n) => `${n} draft${n === 1 ? '' : 's'}`, (p) => p.isDraft],
-    ['behind', '⤓', 'Behind base branch', (n) => `${n} behind`, (p) => p.canUpdateBranch && !p.isDraft && !p.inMergeQueue],
-    ['queued', '⇢', 'In merge queue', (n) => `${n} in queue`, (p) => p.inMergeQueue],
-    ['all', '☰', 'All shown', (n) => `all ${n}`, () => true],
-  ];
-  const COPY_FORMATS = [['links', 'Links'], ['ticket', 'Ticket + title + link'], ['markdown', 'Markdown list']];
-  const copyGroupOf = (id) => COPY_GROUPS.find((g) => g[0] === id) || COPY_GROUPS[0];
-  const currentCopyGroup = () => copyGroupOf(data && data.ui.copyGroup);
-  let copyMenuOpen = false;
-
-  function copyGroupLinks(id) {
-    const [, , , , test] = copyGroupOf(id);
-    const ids = displayedPrs.filter(test).map((p) => p.id);
-    if (id !== data.ui.copyGroup) setState({ copyGroup: id });
-    if (ids.length) send({ type: 'copyLinks', ids, group: id, format: data.ui.copyFormat || 'links' });
-  }
-
-  const copyBtn = h('button', { class: 'secondary copy-btn', onclick: () => copyGroupLinks(currentCopyGroup()[0]) });
+  const copyBtn = h('button', { class: 'secondary copy-btn', onclick: () => copyGroupLinks(copyGroupOf(data.ui.copyGroup)[0]) });
   const copyCaret = h('button', {
     class: 'secondary copy-caret', title: 'Choose which PRs to copy', 'aria-haspopup': 'menu',
     onclick: (e) => { e.stopPropagation(); copyMenuOpen = !copyMenuOpen; renderShare(); },
@@ -117,32 +80,33 @@
   const copySplit = h('span', { class: 'copy-split' }, copyBtn, copyCaret, copyMenu);
   const fmtSel = h('select', { class: 'copy-format', title: 'How the copied text looks', onchange: (e) => setState({ copyFormat: e.target.value }) });
 
-  const row = (label, control) => h('label', { class: 'row' }, h('span', { class: 'row-label' }, label), control);
+  document.addEventListener('click', (e) => {
+    const target = /** @type {HTMLElement} */ (e.target);
+    if (repoMenuOpen && !repoCombo.contains(target)) closeRepoMenu();
+    if (!target.closest('.pr-menu-wrap')) cards.closeMenu();
+    if (copyMenuOpen && !copySplit.contains(target)) { copyMenuOpen = false; renderShare(); }
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cards.closeMenu(); });
+
   const controls = h('div', { class: 'controls' },
     row('Account', accountSel),
     row('Author', authorSel),
-    h('div', { class: 'row' }, h('span', { class: 'row-label' }, 'Repo'), repoCombo),
-    h('div', { class: 'row' }, h('span', { class: 'row-label' }, 'Show'),
-      h('div', { class: 'inline' }, showSel,
-        h('label', { class: 'chk', for: 'drafts' }, draftsChk, 'Drafts'),
-        sortSel)),
-    h('div', { class: 'row' }, h('span', { class: 'row-label' }, 'Share'),
-      h('div', { class: 'inline' }, copySplit)),
+    row('Repo', repoCombo),
+    row('Show', showSel, h('label', { class: 'chk', for: 'drafts' }, draftsChk, 'Drafts'), sortSel),
+    row('Share', copySplit),
     row('Format', fmtSel));
   const summary = h('div', { class: 'summary' });
   const list = h('div', { class: 'list' });
   const footer = h('div', { class: 'footer muted' });
   const prsPane = h('div', { class: 'pane' }, controls, summary, list);
-  // @ts-ignore: set by deploy.js, loaded first
-  const deploy = window.PrStatusDeploy.create({ h, send, setState, open, ago });
   const tabBtn = (id, label) => h('button', { class: 'tab', role: 'tab', 'data-tab': id, onclick: () => { if (data && data.ui.tab !== id) setState({ tab: id }); } }, label);
   const tabs = h('div', { class: 'tabs', role: 'tablist' }, tabBtn('prs', 'Pull Requests'), tabBtn('deploy', 'Deployments'));
   app.append(tabs, prsPane, deploy.el, footer);
 
-  /** Shows the active tab and draws only that one. */
+  /** Shows the active tab and returns it. */
   function renderTabs() {
     const active = data.ui.tab === 'deploy' ? 'deploy' : 'prs';
-    for (const b of tabs.children) {
+    for (const b of Array.from(tabs.children)) {
       const on = b.getAttribute('data-tab') === active;
       b.classList.toggle('active', on);
       b.setAttribute('aria-selected', String(on));
@@ -154,77 +118,66 @@
 
   function renderFooter() {
     const a = data.about;
-    if (!a || !a.author) { footer.replaceChildren(); return; }
+    if (!a.author) { footer.replaceChildren(); return; }
     footer.replaceChildren(
       'Created by ', a.author,
       a.repoUrl ? ' · ' : '',
-      a.repoUrl ? h('a', { href: '#', title: a.repoUrl, onclick: (e) => { e.preventDefault(); open(a.repoUrl); } }, 'GitHub') : '',
+      a.repoUrl ? ns.dom.link('GitHub', a.repoUrl, undefined, a.repoUrl) : '',
       a.version ? ` · v${a.version}` : '');
   }
 
-  // ---------- rendering ----------
-  function setOptions(sel, options, value) {
-    sel.replaceChildren(...options.map(([v, label]) => h('option', { value: v }, label)));
-    sel.value = value;
+  // ---------- controls ----------
+  function authorOptions() {
+    const opts = [['@me', data.viewerLogin ? `Me (${data.viewerLogin})` : 'Me']];
+    if (data.team.length) opts.push(['@team', `Whole team (${data.team.length})`]);
+    for (const m of data.team) opts.push([m, m]);
+    if (!opts.some(([v]) => v === data.ui.author)) opts.push([data.ui.author, data.ui.author]);
+    opts.push(['@other', 'Other user…']);
+    return opts;
   }
 
   function renderControls() {
     const ui = data.ui;
     const accts = data.accounts.map((a) => [a.key, a.label]);
     setOptions(accountSel, [...(accts.length ? accts : [['', 'Not signed in']]), ['__add', '＋ Add another account…']], ui.accountKey || '');
-
-    const authorOpts = [['@me', data.viewerLogin ? `Me (${data.viewerLogin})` : 'Me']];
-    if (data.team.length) authorOpts.push(['@team', `Whole team (${data.team.length})`]);
-    for (const m of data.team) authorOpts.push([m, m]);
-    const special = ['@me', '@team', ...data.team];
-    if (!special.includes(ui.author)) authorOpts.push([ui.author, ui.author]);
-    authorOpts.push(['@other', 'Other user…']);
-    setOptions(authorSel, authorOpts, ui.author);
-
-    showSel.value = ui.show;
-    sortSel.value = ui.sort;
+    setOptions(authorSel, authorOptions(), ui.author);
+    setOptions(showSel, data.options.show, ui.show);
+    setOptions(sortSel, data.options.sort, ui.sort);
     draftsChk.checked = ui.drafts;
     repoBtn.textContent = (ui.repo === '*' ? `All repos (${data.repos.length})` : ui.repo) + '  ▾';
     if (repoMenuOpen) renderRepoOptions();
+  }
+
+  /** @param {string} value */
+  function pickRepo(value) { closeRepoMenu(); setState({ repo: value }); }
+
+  /** @param {string} repo @param {boolean} fav */
+  function repoItem(repo, fav) {
+    return h('div', { class: 'combo-item' + (data.ui.repo === repo ? ' selected' : ''), onclick: () => pickRepo(repo) },
+      h('button', {
+        class: 'star' + (fav ? ' on' : ''),
+        title: fav ? 'Remove from Favorites' : 'Add to Favorites',
+        'aria-pressed': fav ? 'true' : 'false',
+        // Stays open so several repos can be starred in a row.
+        onclick: (e) => { e.stopPropagation(); send({ type: 'toggleFavorite', repo }); },
+      }, fav ? '★' : '☆'),
+      h('span', { class: 'combo-text' }, repo));
   }
 
   function renderRepoOptions() {
     const q = repoSearch.trim().toLowerCase();
     const favs = new Set(data.favorites);
     const match = (r) => !q || r.toLowerCase().includes(q);
-    const pick = (value) => { closeRepoMenu(); setState({ repo: value }); };
-    const item = (repo) => {
-      const fav = favs.has(repo);
-      return h('div', { class: 'combo-item' + (data.ui.repo === repo ? ' selected' : ''), onclick: () => pick(repo) },
-        h('button', {
-          class: 'star' + (fav ? ' on' : ''),
-          title: fav ? 'Remove from Favorites' : 'Add to Favorites',
-          'aria-pressed': fav ? 'true' : 'false',
-          // Stays open so several repos can be starred in a row.
-          onclick: (e) => { e.stopPropagation(); send({ type: 'toggleFavorite', repo }); },
-        }, fav ? '★' : '☆'),
-        h('span', { class: 'combo-text' }, repo));
-    };
-
     const favList = data.favorites.filter(match);
     const others = data.repos.filter((r) => !favs.has(r) && match(r));
     const children = [
-      h('div', { class: 'combo-item' + (data.ui.repo === '*' ? ' selected' : ''), onclick: () => pick('*') },
+      h('div', { class: 'combo-item' + (data.ui.repo === '*' ? ' selected' : ''), onclick: () => pickRepo('*') },
         h('span', { class: 'star-spacer' }), h('span', { class: 'combo-text' }, `All repos (${data.repos.length})`)),
     ];
-    if (favList.length) children.push(h('div', { class: 'combo-sep' }, 'Favorites'), ...favList.map(item));
-    if (others.length) children.push(h('div', { class: 'combo-sep' }, 'All repositories'), ...others.map(item));
+    if (favList.length) children.push(h('div', { class: 'combo-sep' }, 'Favorites'), ...favList.map((r) => repoItem(r, true)));
+    if (others.length) children.push(h('div', { class: 'combo-sep' }, 'All repositories'), ...others.map((r) => repoItem(r, false)));
     if (!favList.length && !others.length && q) children.push(h('div', { class: 'combo-empty' }, 'No matching repos'));
-    // Never pass null to replaceChildren: it would be rendered as the text "null".
     repoList.replaceChildren(...children);
-  }
-
-  function ago(ts) {
-    if (!ts) return 'never';
-    const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
-    if (s < 60) return `${s}s ago`;
-    if (s < 3600) return `${Math.round(s / 60)}m ago`;
-    return `${Math.round(s / 3600)}h ago`;
   }
 
   function renderSummary() {
@@ -240,298 +193,85 @@
     );
   }
 
-  const STATUS = {
-    failing: { order: 0, icon: '✖', label: 'Checks failing', cls: 'st-failing' },
-    changes: { order: 1, icon: '●', label: 'Changes requested', cls: 'st-changes' },
-    running: { order: 2, icon: '◌', label: 'Checks running', cls: 'st-running' },
-    waiting: { order: 3, icon: '◐', label: 'Waiting on review', cls: 'st-waiting' },
-    ready: { order: 4, icon: '●', label: 'Ready to merge', cls: 'st-ready' },
-    draft: { order: 5, icon: '○', label: 'Drafts', cls: 'st-draft' },
+  // ---------- list ----------
+  /** @param {PrView} a @param {PrView} b */
+  const attention = (a, b) => STATUS[a.status].order - STATUS[b.status].order || b.updatedAt.localeCompare(a.updatedAt);
+  const SORTS = {
+    attention,
+    updated: (a, b) => b.updatedAt.localeCompare(a.updatedAt),
+    ticket: (a, b) => (a.ticket || '~').localeCompare(b.ticket || '~', undefined, { numeric: true }),
   };
 
-  /** segments: [{n, cls}] ; total */
-  function bar(segments, total) {
-    const el = h('div', { class: 'bar' });
-    if (!total) { el.classList.add('empty'); return el; }
-    for (const s of segments) if (s.n > 0) el.append(h('div', { class: `seg ${s.cls}`, flex: s.n }));
-    const used = segments.reduce((a, s) => a + s.n, 0);
-    if (total > used) el.append(h('div', { class: 'seg rest', flex: total - used }));
-    return el;
+  /** @param {PrView[]} prs @param {(p: PrView) => string} keyOf */
+  function groupBy(prs, keyOf) {
+    const groups = new Map();
+    for (const p of prs) groups.set(keyOf(p), [...(groups.get(keyOf(p)) || []), p]);
+    return groups;
   }
 
-  function boxes(pr, compact) {
-    const c = pr.checks;
-    const checkTitle = `${c.passed} passed, ${c.failed} failed, ${c.running} running, ${c.pending} pending, ${c.skipped} skipped`;
-    const t = pr.threads;
-    const a = pr.approvals;
-    const box = (label, value, barEl, title) =>
-      h('div', { class: 'box', title }, compact ? null : h('div', { class: 'box-head' }, h('span', null, label), h('span', { class: 'val' }, value)), barEl);
-    return h('div', { class: 'boxes' + (compact ? ' compact' : '') },
-      box('Checks', c.total ? `${c.passed + c.skipped}/${c.total}` : '—',
-        bar([{ n: c.passed + c.skipped, cls: 'ok' }, { n: c.failed, cls: 'bad' }, { n: c.running, cls: 'run' }], c.total), checkTitle),
-      box('Comments', t.total ? `${t.resolved}/${t.total}` : '—',
-        // unresolved threads get their own yellow segment, like running checks, instead of falling into the gray rest
-        bar([{ n: t.resolved, cls: 'ok' }, { n: t.total - t.resolved, cls: 'run' }], t.total),
-        t.total ? `${t.resolved} of ${t.total} review comments resolved, ${t.total - t.resolved} open` : 'No review comments'),
-      box('Approvals', approvalValue(a),
-        // extra approvals still fill the bar: met = fully green, never a gray gap
-        bar([{ n: a.approved, cls: 'ok' }, { n: a.changesRequested, cls: 'bad' }], Math.max(a.required, a.approved + a.changesRequested, 1)),
-        approvalTitle(a)));
-  }
-
-  /** "2/2 +1" when there are more approvals than required, so it never reads as "3 of 2". */
-  function approvalValue(a) {
-    const extra = a.approved - a.required;
-    return a.required > 0 && extra > 0 ? `${a.required}/${a.required} +${extra}` : `${a.approved}/${a.required}`;
-  }
-
-  function approvalTitle(a) {
-    const met = a.approved >= a.required ? ': requirement met' : `: ${a.required - a.approved} more needed`;
-    return `${a.approved} approval(s) (${a.required} required)${met}${a.changesRequested ? `, ${a.changesRequested} requested changes` : ''}`;
-  }
-
-  /** Small copy icon: the extension copies the URL from its own data; shows ✓ briefly. */
-  function copyIcon(pr, which, label) {
-    const btn = h('button', {
-      class: 'copy-icon', title: `Copy ${label}`, 'aria-label': `Copy ${label}`,
-      onclick: (e) => {
-        e.preventDefault(); e.stopPropagation();
-        send({ type: 'copyUrl', prId: pr.id, which });
-        btn.textContent = '✓'; btn.classList.add('done');
-        setTimeout(() => { btn.textContent = '⧉'; btn.classList.remove('done'); }, 1500);
-      },
-    }, '⧉');
-    return btn;
-  }
-
-  function cardEl(pr) {
-    const st = STATUS[pr.status];
-    const repoName = pr.repo.split('/')[1];
-    const ticket = pr.ticket
-      ? h('a', { class: 'ticket', href: '#', title: pr.ticketUrl ? `Open ${pr.ticket} in Jira` : 'Set up the Jira link',
-          onclick: (e) => {
-            e.preventDefault(); e.stopPropagation();
-            if (pr.ticketUrl) open(pr.ticketUrl);
-            else send({ type: 'configureJira', ticket: pr.ticket });
-          } },
-          pr.ticket, ' ↗')
-      : h('span', { class: 'ticket none' }, `#${pr.number}`);
-
-    if (data.compact) {
-      return h('div', { class: `card compact ${st.cls}`, title: `${pr.repo}#${pr.number}: ${pr.title}`, onclick: () => open(pr.url) },
-        h('span', { class: 'dot' }, st.icon), ticket, h('span', { class: 'title' }, pr.title), boxes(pr, true), prMenu(pr));
+  /** The PRs as titled groups: by repository, by status (Needs attention), or one untitled group. */
+  function sections() {
+    if (data.groupByRepo) {
+      const groups = groupBy([...data.prs].sort(attention), (p) => p.repo);
+      return [...groups.keys()].sort().map((k) => ({ head: h('div', { class: 'group' }, `${k} (${groups.get(k).length})`), prs: groups.get(k) }));
     }
-
-    const problems = pr.checks.items.filter((i) => i.state === 'failed' || i.state === 'running' || i.state === 'pending');
-    const a = pr.approvals;
-    const missing = Math.max(a.required - a.approved, 0);
-    const approvalLabel = [
-      missing ? `${missing} approval(s) missing` : '',
-      a.changesRequested ? `${a.changesRequested} requested changes` : '',
-    ].filter(Boolean).join(', ')
-      // nothing missing: still list who approved, so the section is there to check
-      || (a.items.length ? `${a.approved} approval(s)` : '');
-    return h('div', { class: `card ${st.cls}` },
-      h('div', { class: 'card-top' },
-        h('span', { class: 'dot', title: st.label }, st.icon), ticket,
-        pr.ticketUrl ? copyIcon(pr, 'ticket', `${pr.ticket} link`) : null,
-        h('span', { class: 'repo', title: pr.repo }, repoName),
-        behindHint(pr),
-        pr.inMergeQueue ? h('span', { class: 'queued', title: 'In the merge queue: GitHub will merge it when its checks pass' }, '⇢ in queue') : null,
-        prMenu(pr)),
-      h('div', { class: 'pr-row' },
-        h('a', { class: 'pr-link', href: '#', title: pr.url, onclick: (e) => { e.preventDefault(); open(pr.url); } },
-          `#${pr.number} ${pr.title}`, ' ↗'),
-        copyIcon(pr, 'pr', 'PR link')),
-      h('div', { class: 'url muted' }, pr.url.replace(/^https?:\/\//, '')),
-      boxes(pr, false),
-      pr.mergeable === 'CONFLICTING' ? h('div', { class: 'warn' }, '⚠ Merge conflicts') : null,
-      section(pr, 'checks', problems.length ? `${problems.length} check(s) not passing` : '', problems, (c) =>
-        h('li', { class: `ck ${c.state}` },
-          h('span', null, c.state === 'failed' ? '✖' : c.state === 'running' ? '◌' : '○'),
-          link(c.name, c.url))),
-      section(pr, 'comments', pr.threads.items.length ? `${pr.threads.items.length} comment(s) unresolved` : '', pr.threads.items, (t) =>
-        h('li', { class: 'ck running', title: t.snippet },
-          h('span', null, '●'),
-          h('span', { class: 'ck-text' },
-            link(t.author, t.url),
-            t.where ? h('span', { class: 'muted' }, ` · ${t.where}`) : null,
-            t.outdated ? h('span', { class: 'muted' }, ' · outdated') : null,
-            t.snippet ? h('span', { class: 'snippet' }, ` — ${t.snippet}`) : null))),
-      section(pr, 'approvals', approvalLabel, a.items, (r) =>
-        h('li', { class: `ck ${r.state === 'changes' ? 'failed' : r.state === 'requested' ? 'pending' : 'passed'}` },
-          h('span', null, r.state === 'changes' ? '✖' : r.state === 'requested' ? '○' : '✔'),
-          h('span', { class: 'ck-text' },
-            link(r.name, r.url),
-            h('span', { class: 'muted' }, r.state === 'changes' ? ' · requested changes' : r.state === 'requested' ? ' · review requested' : ' · approved')))),
-      pr.author !== data.viewerLogin ? h('div', { class: 'muted small' }, `by ${pr.author}`) : null,
-    );
+    const sorted = [...data.prs].sort(SORTS[data.ui.sort] || attention);
+    if (data.ui.sort !== 'attention') return [{ head: null, prs: sorted }];
+    return [...groupBy(sorted, (p) => p.status)].map(([st, prs]) => ({
+      head: h('div', { class: `group ${STATUS[st].cls}` }, `${STATUS[st].icon} ${STATUS[st].label.toUpperCase()} (${prs.length})`),
+      prs,
+    }));
   }
 
-  /** Text that opens url (https only, checked again by the extension); plain text when there is no url. */
-  function link(text, url) {
-    return url ? h('a', { href: '#', onclick: (e) => { e.preventDefault(); open(url); } }, text) : h('span', null, text);
-  }
-
-  /**
-   * A collapsible list under the card: "▸ <label>", and the items when expanded.
-   * Each section of each PR opens on its own. Nothing is drawn when label is empty.
-   */
-  function section(pr, kind, label, items, renderItem) {
-    if (!label) return null;
-    const key = `${pr.id}:${kind}`;
-    const isOpen = expanded.has(key);
-    return h('div', { class: `section ${kind}` },
-      h('div', { class: 'checks-toggle', onclick: () => { isOpen ? expanded.delete(key) : expanded.add(key); renderList(); } },
-        `${isOpen ? '▾' : '▸'} ${label}`),
-      isOpen && items.length ? h('ul', { class: 'checks' }, ...items.map(renderItem)) : null);
-  }
-
-  /** ⚙ button + per-PR options menu. Add future per-PR options here. */
-  function prMenu(pr) {
-    const isOpen = openMenuId === pr.id;
-    const failed = pr.checks.failed;
-    // Each button has its own rule: "failed" needs a failed Actions run, "all" only needs any Actions run.
-    // A failing non-Actions check (e.g. AWS CodeBuild) must not disable "all", which is how it gets re-triggered.
-    const failedReason = pr.rerun.failedRunIds.length > 0
-      ? undefined
-      : failed === 0
-        ? 'No failed checks to re-run'
-        : 'The failing checks are not GitHub Actions workflows yet; use Re-run all checks';
-    const allReason = pr.rerun.allRunIds.length > 0 ? undefined : 'No GitHub Actions workflows behind these checks';
-    const reason = (failed > 0 && failedReason) || allReason;
-    const item = (label, mode, title, why) => h('button', {
-      class: 'pr-menu-item',
-      disabled: why !== undefined,
-      title: why || title,
-      onclick: (e) => {
-        e.stopPropagation();
-        openMenuId = null;
-        renderList();
-        send({ type: 'rerun', prId: pr.id, mode });
-      },
-    }, label);
-
-    const behind = showBehind(pr);
-    const updateWhy = pr.canUpdateBranch
-      ? undefined
-      : pr.mergeable === 'CONFLICTING'
-        ? 'Merge conflicts: resolve them locally first'
-        : `Nothing to update: up to date with ${pr.baseRef}, or you can't push to this branch`;
-    const update = (label, method, title) => h('button', {
-      class: 'pr-menu-item',
-      disabled: updateWhy !== undefined,
-      title: updateWhy || title,
-      onclick: (e) => {
-        e.stopPropagation();
-        openMenuId = null;
-        renderList();
-        send({ type: 'updateBranch', prId: pr.id, method });
-      },
-    }, label);
-
-    return h('span', { class: 'pr-menu-wrap', onclick: (e) => e.stopPropagation() },
-      h('button', {
-        class: 'gear' + (isOpen ? ' open' : '') + (behind ? ' has-action' : ''),
-        title: behind ? `PR options · behind ${pr.baseRef}, can be updated` : 'PR options',
-        'aria-haspopup': 'menu',
-        'aria-expanded': isOpen ? 'true' : 'false',
-        onclick: (e) => { e.stopPropagation(); openMenuId = isOpen ? null : pr.id; renderList(); },
-      }, '⚙'),
-      isOpen
-        ? h('div', { class: 'pr-menu', role: 'menu' },
-            item(`↻ Re-run failed checks${failed ? ` (${failed})` : ''}`, 'failed', 'Re-run only the failed jobs', failedReason),
-            item('↻ Re-run all checks', 'all', 'Re-run every job in the workflow runs for this PR', allReason),
-            reason ? h('div', { class: 'pr-menu-note' }, reason) : null,
-            h('div', { class: 'pr-menu-sep' }),
-            update(`⤓ Update branch (merge ${pr.baseRef})`, 'merge', `Merge the latest ${pr.baseRef} into this branch, like GitHub's Update branch button`),
-            update('⤓ Update branch (rebase)', 'rebase', `Replay this branch on top of the latest ${pr.baseRef} (rewrites the branch)`),
-            !pr.canUpdateBranch && pr.mergeable === 'CONFLICTING' ? h('div', { class: 'pr-menu-note' }, updateWhy) : null)
-        : null);
-  }
-
-  /** Behind its base and updatable; not shown for drafts or PRs already in the merge queue. */
-  function showBehind(pr) {
-    return pr.canUpdateBranch === true && !pr.isDraft && !pr.inMergeQueue;
-  }
-
-  /** Small, quiet "⤓ behind" label; the action itself lives in the ⚙ menu. */
-  function behindHint(pr) {
-    return showBehind(pr)
-      ? h('span', { class: 'behind', title: `Behind ${pr.baseRef}: update available in ⚙` }, '⤓ behind')
-      : null;
-  }
-
-  function attentionSort(a, b) {
-    return STATUS[a.status].order - STATUS[b.status].order || b.updatedAt.localeCompare(a.updatedAt);
+  function notices() {
+    const out = [];
+    const retry = h('a', { href: '#', onclick: (e) => { e.preventDefault(); send({ type: 'refresh' }); } }, 'Retry');
+    if (data.error) out.push(h('div', { class: 'error' }, `⚠ ${data.error}`, ' ', retry));
+    if (!data.prs.length && !data.loading && !data.error) out.push(h('div', { class: 'empty-state muted' }, 'No open pull requests match these filters.'));
+    return out;
   }
 
   function renderList() {
     if (data.needsSignIn) {
-      list.replaceChildren(h('div', { class: 'empty-state' },
-        h('p', null, 'Sign in to GitHub to see your pull requests.'),
-        h('button', { class: 'primary', onclick: () => send({ type: 'signIn' }) }, 'Sign in to GitHub')));
+      list.replaceChildren(signInState());
       displayedPrs = [];
       renderShare();
       return;
     }
-    const nodes = [];
-    if (data.error) nodes.push(h('div', { class: 'error' }, `⚠ ${data.error}`, ' ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); send({ type: 'refresh' }); } }, 'Retry')));
-    const prs = [...data.prs];
-    if (!prs.length && !data.loading && !data.error) nodes.push(h('div', { class: 'empty-state muted' }, 'No open pull requests match these filters.'));
-
-    const ordered = [];
-    const card = (p) => { ordered.push(p); return cardEl(p); };
-    const groups = new Map();
-    if (data.groupByRepo) {
-      prs.sort(attentionSort);
-      for (const p of prs) { if (!groups.has(p.repo)) groups.set(p.repo, []); groups.get(p.repo).push(p); }
-      for (const k of [...groups.keys()].sort()) {
-        nodes.push(h('div', { class: 'group' }, `${k} (${groups.get(k).length})`), ...groups.get(k).map(card));
-      }
-    } else if (data.ui.sort === 'attention') {
-      prs.sort(attentionSort);
-      for (const p of prs) { if (!groups.has(p.status)) groups.set(p.status, []); groups.get(p.status).push(p); }
-      for (const [st, items] of groups) {
-        nodes.push(h('div', { class: `group ${STATUS[st].cls}` }, `${STATUS[st].icon} ${STATUS[st].label.toUpperCase()} (${items.length})`), ...items.map(card));
-      }
-    } else {
-      prs.sort(data.ui.sort === 'updated'
-        ? (a, b) => b.updatedAt.localeCompare(a.updatedAt)
-        : (a, b) => (a.ticket || '~').localeCompare(b.ticket || '~', undefined, { numeric: true }));
-      nodes.push(...prs.map(card));
-    }
-    list.replaceChildren(...nodes);
-    displayedPrs = ordered;
+    const groups = sections();
+    list.replaceChildren(...notices(), ...groups.flatMap((g) => [g.head, ...g.prs.map(cards.card)]).filter(Boolean));
+    displayedPrs = groups.flatMap((g) => g.prs);
     renderShare();
   }
 
+  // ---------- share ----------
+  /** One "Copy links" menu entry. @param {typeof COPY_GROUPS[number]} group */
+  function copyItem(group) {
+    const [gid, icon, glabel] = group;
+    const n = inGroup(gid).length;
+    const item = h('button', {
+      class: 'pr-menu-item copy-item' + (gid === data.ui.copyGroup ? ' current' : ''),
+      disabled: n === 0,
+      title: n ? `Copy ${n} PR link(s)` : 'None in this list',
+      onclick: (e) => { e.stopPropagation(); copyMenuOpen = false; renderShare(); copyGroupLinks(gid); },
+    }, h('span', null, `${icon} ${glabel}`), h('span', { class: 'copy-count' }, String(n)));
+    return gid === 'all' ? [h('div', { class: 'pr-menu-sep' }), item] : [item];
+  }
+
   function renderShare() {
-    const [id, , label, btnText, test] = currentCopyGroup();
-    const count = displayedPrs.filter(test).length;
+    const [id, , label, btnText] = copyGroupOf(data.ui.copyGroup);
+    const count = inGroup(id).length;
     copyBtn.textContent = `⧉ Copy ${btnText(count)}`;
     copyBtn.disabled = count === 0;
     copyBtn.title = count ? `Copy the links of ${btnText(count)} (${label.toLowerCase()})` : `No PRs in "${label}" in this list`;
     copyCaret.setAttribute('aria-expanded', String(copyMenuOpen));
     copyMenu.hidden = !copyMenuOpen;
-    if (copyMenuOpen) {
-      copyMenu.replaceChildren(...COPY_GROUPS.flatMap(([gid, icon, glabel, , gtest]) => {
-        const n = displayedPrs.filter(gtest).length;
-        const item = h('button', {
-          class: 'pr-menu-item copy-item' + (gid === id ? ' current' : ''),
-          disabled: n === 0,
-          title: n ? `Copy ${n} PR link(s)` : 'None in this list',
-          onclick: (e) => { e.stopPropagation(); copyMenuOpen = false; renderShare(); copyGroupLinks(gid); },
-        }, h('span', null, `${icon} ${glabel}`), h('span', { class: 'copy-count' }, String(n)));
-        return gid === 'all' ? [h('div', { class: 'pr-menu-sep' }), item] : [item];
-      }));
-    }
-    setOptions(fmtSel, COPY_FORMATS, data.ui.copyFormat || 'links');
+    if (copyMenuOpen) copyMenu.replaceChildren(...COPY_GROUPS.flatMap(copyItem));
+    setOptions(fmtSel, data.options.copyFormats, data.ui.copyFormat);
   }
 
-  window.addEventListener('message', (e) => {
-    if (e.data?.type !== 'update') return;
-    data = e.data.payload;
+  onUpdate((payload) => {
+    data = payload;
     if (renderTabs() === 'deploy') deploy.render(data);
     else { renderControls(); renderSummary(); renderList(); }
     renderFooter();

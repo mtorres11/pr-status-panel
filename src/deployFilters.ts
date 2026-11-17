@@ -5,8 +5,23 @@ import { parsePrRef, ticketKeyIn } from "./ticketLinks";
 import { isLogin, isRepo, oneOf, pickValid } from "./validate";
 
 const TABS = ["prs", "deploy"] as const;
-const STATES = ["all", "open", "merged"] as const;
-const WHEN = [7, 14, 30, 90, 180, 365];
+
+/** "When" choices: days back. */
+export const WHEN_OPTIONS = [
+  [7, "Last 7 days"],
+  [14, "Last 14 days"],
+  [30, "Last 30 days"],
+  [90, "Last 90 days"],
+  [180, "Last 6 months"],
+  [365, "Last 1 year"],
+] as const;
+
+/** "Show" choices: which PR states. */
+export const STATE_OPTIONS = [
+  ["all", "Open + merged"],
+  ["open", "Open only"],
+  ["merged", "Merged only"],
+] as const;
 
 /** Deployments tab part of the stored UI state, plus which tab is showing. */
 export interface DeployUi {
@@ -15,7 +30,7 @@ export interface DeployUi {
   deployWho: string;
   /** Days back: open PRs updated, or PRs merged, in this window. */
   deployWhen: number;
-  deployState: (typeof STATES)[number];
+  deployState: (typeof STATE_OPTIONS)[number][0];
   /** "*" or owner/name */
   deployRepo: string;
   /** Branch the "in branch" check uses. */
@@ -47,8 +62,8 @@ const isWho = (v: unknown) =>
 const VALID: Record<keyof DeployUi, (v: unknown) => boolean> = {
   tab: oneOf(TABS),
   deployWho: isWho,
-  deployWhen: oneOf(WHEN),
-  deployState: oneOf(STATES),
+  deployWhen: oneOf(WHEN_OPTIONS.map(([v]) => v)),
+  deployState: oneOf(STATE_OPTIONS.map(([v]) => v)),
   deployRepo: (v) => v === "*" || isRepo(v),
   deployBranch: (v) => typeof v === "string" && BRANCH_RE.test(v),
   deployFind: (v) => typeof v === "string" && v.length <= 300,

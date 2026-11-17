@@ -1,45 +1,93 @@
+/*
+ * Every colour and font the panel uses, defined once. Rules below use only these --psp-* names; the theme's
+ * --vscode-* values are read here and nowhere else.
+ */
 :root {
-  /* Fixed status colours (same in light and dark themes). */
-  --ok: #2ea043;   /* green: done / passed */
-  --bad: #e5534b;  /* red: failed */
-  --run: #d4a72c;  /* mustard: in progress */
-  --rest: rgba(128, 128, 128, 0.35); /* grey: not started */
-  --border: var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
-  --muted: var(--vscode-descriptionForeground);
+  /* Status colours (same in light and dark themes). */
+  --psp-ok: #2ea043;   /* green: done / passed */
+  --psp-bad: #e5534b;  /* red: failed */
+  --psp-run: #d4a72c;  /* mustard: in progress */
+  --psp-rest: rgba(128, 128, 128, 0.35); /* grey: not started */
+
+  /* Text and surfaces. */
+  --psp-font: var(--vscode-font-family);
+  --psp-font-size: var(--vscode-font-size);
+  --psp-fg: var(--vscode-foreground);
+  --psp-muted: var(--vscode-descriptionForeground);
+  --psp-link: var(--vscode-textLink-foreground);
+  --psp-bg: var(--vscode-sideBar-background);
+  --psp-card: var(--vscode-editor-background);
+  --psp-border: var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+  --psp-focus: var(--vscode-focusBorder);
+  --psp-shadow: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));
+
+  /* Lists and hover. */
+  --psp-hover: var(--vscode-list-hoverBackground);
+  --psp-selected-bg: var(--vscode-list-activeSelectionBackground);
+  --psp-selected-fg: var(--vscode-list-activeSelectionForeground);
+  --psp-tool-hover: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
+
+  /* Form fields. */
+  --psp-field-bg: var(--vscode-dropdown-background);
+  --psp-field-fg: var(--vscode-dropdown-foreground);
+  --psp-field-border: var(--vscode-dropdown-border, var(--psp-border));
+  --psp-input-bg: var(--vscode-input-background);
+  --psp-input-fg: var(--vscode-input-foreground);
+
+  /* Buttons. */
+  --psp-primary-bg: var(--vscode-button-background);
+  --psp-primary-fg: var(--vscode-button-foreground);
+  --psp-primary-hover: var(--vscode-button-hoverBackground);
+  --psp-secondary-bg: var(--vscode-button-secondaryBackground, var(--psp-field-bg));
+  --psp-secondary-fg: var(--vscode-button-secondaryForeground, var(--psp-fg));
+  --psp-secondary-hover: var(--vscode-button-secondaryHoverBackground, var(--psp-hover));
+  --psp-button-border: var(--vscode-button-border, transparent);
+  --psp-act-border: var(--vscode-button-border, var(--psp-border));
+
+  /* Menus. */
+  --psp-menu-bg: var(--vscode-menu-background, var(--psp-field-bg));
+  --psp-menu-fg: var(--vscode-menu-foreground, var(--psp-fg));
+  --psp-menu-border: var(--vscode-menu-border, var(--psp-focus));
+  --psp-menu-selected-bg: var(--vscode-menu-selectionBackground, var(--psp-hover));
+  --psp-menu-selected-fg: var(--vscode-menu-selectionForeground); /* unset: falls back to inherit where used */
+
+  /* Errors. */
+  --psp-error-bg: var(--vscode-inputValidation-errorBackground);
+  --psp-error-border: var(--vscode-inputValidation-errorBorder);
 }
 
 body {
   padding: 0 8px 12px;
-  color: var(--vscode-foreground);
-  background: var(--vscode-sideBar-background);
-  font-family: var(--vscode-font-family);
-  font-size: var(--vscode-font-size);
+  color: var(--psp-fg);
+  background: var(--psp-bg);
+  font-family: var(--psp-font);
+  font-size: var(--psp-font-size);
 }
 
-.muted { color: var(--muted); }
+.muted { color: var(--psp-muted); }
 .small { font-size: 0.9em; margin-top: 4px; }
-a { color: var(--vscode-textLink-foreground); text-decoration: none; cursor: pointer; }
+a { color: var(--psp-link); text-decoration: none; cursor: pointer; }
 a:hover { text-decoration: underline; }
 
 /* ---------- controls ---------- */
 .controls {
   position: sticky; top: 0; z-index: 5;
-  background: var(--vscode-sideBar-background);
+  background: var(--psp-bg);
   padding: 8px 0 6px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--psp-border);
   display: grid; gap: 4px;
 }
 .row { display: grid; grid-template-columns: 58px 1fr; align-items: center; gap: 6px; min-width: 0; }
-.row-label { color: var(--muted); font-size: 0.92em; }
+.row-label { color: var(--psp-muted); font-size: 0.92em; }
 .inline { display: flex; gap: 6px; align-items: center; min-width: 0; }
 .inline select { flex: 1; min-width: 0; }
 .chk { display: flex; align-items: center; gap: 3px; white-space: nowrap; font-size: 0.92em; }
 
 select, .combo-btn, .combo-search {
   width: 100%; min-width: 0; box-sizing: border-box;
-  background: var(--vscode-dropdown-background);
-  color: var(--vscode-dropdown-foreground);
-  border: 1px solid var(--vscode-dropdown-border, var(--border));
+  background: var(--psp-field-bg);
+  color: var(--psp-field-fg);
+  border: 1px solid var(--psp-field-border);
   border-radius: 2px; padding: 2px 4px;
   font: inherit; height: 24px;
 }
@@ -47,75 +95,75 @@ select, .combo-btn, .combo-search {
 .combo-btn { text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .combo-menu {
   position: absolute; left: 0; right: 0; top: 26px; z-index: 10;
-  background: var(--vscode-dropdown-background);
-  border: 1px solid var(--vscode-focusBorder);
-  box-shadow: 0 4px 12px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));
+  background: var(--psp-field-bg);
+  border: 1px solid var(--psp-focus);
+  box-shadow: 0 4px 12px var(--psp-shadow);
   padding: 4px;
 }
-.combo-search { margin-bottom: 4px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); }
+.combo-search { margin-bottom: 4px; background: var(--psp-input-bg); color: var(--psp-input-fg); }
 .combo-list { max-height: 280px; overflow-y: auto; }
 .combo-item { display: flex; gap: 6px; align-items: center; padding: 3px 4px; cursor: pointer; border-radius: 2px; }
-.combo-item:hover { background: var(--vscode-list-hoverBackground); }
-.combo-item.selected { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+.combo-item:hover { background: var(--psp-hover); }
+.combo-item.selected { background: var(--psp-selected-bg); color: var(--psp-selected-fg); }
 .combo-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.combo-sep { color: var(--muted); font-size: 0.85em; padding: 6px 4px 2px; text-transform: uppercase; letter-spacing: 0.04em; }
-.combo-empty { color: var(--muted); padding: 6px 4px; }
-.star.on { color: var(--run); }
+.combo-sep { color: var(--psp-muted); font-size: 0.85em; padding: 6px 4px 2px; text-transform: uppercase; letter-spacing: 0.04em; }
+.combo-empty { color: var(--psp-muted); padding: 6px 4px; }
+.star.on { color: var(--psp-run); }
 
-.summary { padding: 6px 0; font-size: 0.92em; border-bottom: 1px solid var(--border); }
+.summary { padding: 6px 0; font-size: 0.92em; border-bottom: 1px solid var(--psp-border); }
 
 /* ---------- list ---------- */
-.group { margin: 12px 0 4px; font-size: 0.85em; font-weight: 600; letter-spacing: 0.03em; color: var(--muted); }
-.group.st-failing { color: var(--bad); }
-.group.st-ready { color: var(--ok); }
-.group.st-running, .group.st-changes { color: var(--run); }
+.group { margin: 12px 0 4px; font-size: 0.85em; font-weight: 600; letter-spacing: 0.03em; color: var(--psp-muted); }
+.group.st-failing { color: var(--psp-bad); }
+.group.st-ready { color: var(--psp-ok); }
+.group.st-running, .group.st-changes { color: var(--psp-run); }
 
 .card {
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--rest);
+  border: 1px solid var(--psp-border);
+  border-left: 3px solid var(--psp-rest);
   border-radius: 4px;
   padding: 8px; margin: 6px 0;
-  background: var(--vscode-editor-background);
+  background: var(--psp-card);
 }
-.card.st-failing { border-left-color: var(--bad); }
-.card.st-changes, .card.st-running { border-left-color: var(--run); }
-.card.st-ready { border-left-color: var(--ok); }
+.card.st-failing { border-left-color: var(--psp-bad); }
+.card.st-changes, .card.st-running { border-left-color: var(--psp-run); }
+.card.st-ready { border-left-color: var(--psp-ok); }
 
 .card-top { display: flex; gap: 6px; align-items: baseline; }
 .dot { font-size: 0.9em; }
-.st-failing .dot { color: var(--bad); }
-.st-ready .dot { color: var(--ok); }
-.st-running .dot, .st-changes .dot { color: var(--run); }
+.st-failing .dot { color: var(--psp-bad); }
+.st-ready .dot { color: var(--psp-ok); }
+.st-running .dot, .st-changes .dot { color: var(--psp-run); }
 .ticket { font-weight: 600; }
-.ticket.none { color: var(--muted); font-weight: 400; }
-.repo { margin-left: auto; color: var(--muted); font-size: 0.88em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pr-link { display: block; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-foreground); }
+.ticket.none { color: var(--psp-muted); font-weight: 400; }
+.repo { margin-left: auto; color: var(--psp-muted); font-size: 0.88em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-link { display: block; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--psp-fg); }
 .url { font-size: 0.85em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 6px; }
 
-.boxes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: 3px; }
+.boxes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--psp-border); border-radius: 3px; }
 .box { padding: 5px 6px 6px; min-width: 0; }
-.box + .box { border-left: 1px solid var(--border); }
+.box + .box { border-left: 1px solid var(--psp-border); }
 .box-head { display: flex; justify-content: space-between; gap: 4px; font-size: 0.85em; margin-bottom: 4px; white-space: nowrap; }
 .box-head .val { font-weight: 600; font-variant-numeric: tabular-nums; }
-.bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--rest); }
+.bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--psp-rest); }
 .seg { min-width: 2px; }
 .bar.empty { opacity: 0.5; }
-.seg.ok { background: var(--ok); }
-.seg.bad { background: var(--bad); }
-.seg.run { background: var(--run); }
-.seg.rest { background: var(--rest); }
+.seg.ok { background: var(--psp-ok); }
+.seg.bad { background: var(--psp-bad); }
+.seg.run { background: var(--psp-run); }
+.seg.rest { background: var(--psp-rest); }
 
-.warn { color: var(--run); font-size: 0.9em; margin-top: 6px; }
-.checks-toggle { margin-top: 6px; font-size: 0.9em; color: var(--muted); cursor: pointer; user-select: none; }
-.checks-toggle:hover { color: var(--vscode-foreground); }
+.warn { color: var(--psp-run); font-size: 0.9em; margin-top: 6px; }
+.checks-toggle { margin-top: 6px; font-size: 0.9em; color: var(--psp-muted); cursor: pointer; user-select: none; }
+.checks-toggle:hover { color: var(--psp-fg); }
 .checks { list-style: none; margin: 4px 0 0; padding: 0 0 0 12px; font-size: 0.9em; }
 .ck { display: flex; gap: 6px; padding: 1px 0; }
-.ck.failed span:first-child { color: var(--bad); }
-.ck.running span:first-child { color: var(--run); }
-.ck.pending span:first-child { color: var(--muted); }
-.ck.passed span:first-child { color: var(--ok); }
+.ck.failed span:first-child { color: var(--psp-bad); }
+.ck.running span:first-child { color: var(--psp-run); }
+.ck.pending span:first-child { color: var(--psp-muted); }
+.ck.passed span:first-child { color: var(--psp-ok); }
 .ck-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ck-text .snippet { color: var(--muted); }
+.ck-text .snippet { color: var(--psp-muted); }
 
 /* compact */
 .card.compact { display: grid; grid-template-columns: auto auto 1fr 96px; gap: 6px; align-items: center; padding: 5px 6px; cursor: pointer; }
@@ -124,27 +172,27 @@ select, .combo-btn, .combo-search {
 .boxes.compact .box { padding: 0; border: none; }
 
 .empty-state { padding: 20px 4px; text-align: center; }
-.error { margin: 8px 0; padding: 6px 8px; border-radius: 3px; background: var(--vscode-inputValidation-errorBackground); border: 1px solid var(--vscode-inputValidation-errorBorder); }
+.error { margin: 8px 0; padding: 6px 8px; border-radius: 3px; background: var(--psp-error-bg); border: 1px solid var(--psp-error-border); }
 button.primary {
-  background: var(--vscode-button-background); color: var(--vscode-button-foreground);
+  background: var(--psp-primary-bg); color: var(--psp-primary-fg);
   border: none; padding: 5px 12px; border-radius: 2px; cursor: pointer; font: inherit;
 }
-button.primary:hover { background: var(--vscode-button-hoverBackground); }
+button.primary:hover { background: var(--psp-primary-hover); }
 
 /* ---------- per-PR ⚙ menu ---------- */
 .card { position: relative; }
 .pr-menu-wrap { position: relative; flex: none; }
 .gear {
   background: none; border: none; cursor: pointer; padding: 0 2px;
-  color: var(--muted); font-size: 1.05em; line-height: 1; border-radius: 3px;
+  color: var(--psp-muted); font-size: 1.05em; line-height: 1; border-radius: 3px;
 }
-.gear:hover, .gear.open { color: var(--vscode-foreground); background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2)); }
+.gear:hover, .gear.open { color: var(--psp-fg); background: var(--psp-tool-hover); }
 .pr-menu {
   position: absolute; right: 0; top: 20px; z-index: 20; min-width: 200px;
-  background: var(--vscode-menu-background, var(--vscode-dropdown-background));
-  color: var(--vscode-menu-foreground, var(--vscode-foreground));
-  border: 1px solid var(--vscode-menu-border, var(--vscode-focusBorder));
-  box-shadow: 0 4px 12px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));
+  background: var(--psp-menu-bg);
+  color: var(--psp-menu-fg);
+  border: 1px solid var(--psp-menu-border);
+  box-shadow: 0 4px 12px var(--psp-shadow);
   border-radius: 4px; padding: 4px;
 }
 .pr-menu-item {
@@ -153,33 +201,33 @@ button.primary:hover { background: var(--vscode-button-hoverBackground); }
   padding: 4px 8px; border-radius: 3px; cursor: pointer;
 }
 .pr-menu-item:hover:not(:disabled) {
-  background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground));
-  color: var(--vscode-menu-selectionForeground, inherit);
+  background: var(--psp-menu-selected-bg);
+  color: var(--psp-menu-selected-fg, inherit);
 }
 .pr-menu-item:disabled { opacity: 0.45; cursor: default; }
-.pr-menu-note { color: var(--muted); font-size: 0.85em; padding: 4px 8px 2px; border-top: 1px solid var(--border); margin-top: 4px; white-space: normal; }
+.pr-menu-note { color: var(--psp-muted); font-size: 0.85em; padding: 4px 8px 2px; border-top: 1px solid var(--psp-border); margin-top: 4px; white-space: normal; }
 .card.compact { grid-template-columns: auto auto 1fr 96px auto; }
 
-.footer { margin-top: 14px; padding-top: 6px; border-top: 1px solid var(--border); font-size: 0.85em; text-align: center; }
+.footer { margin-top: 14px; padding-top: 6px; border-top: 1px solid var(--psp-border); font-size: 0.85em; text-align: center; }
 
 /* ---------- favorites star (button) ---------- */
 .star {
   width: 18px; flex: none; padding: 0; border: none; background: none; cursor: pointer;
-  color: var(--muted); font-size: 1.15em; line-height: 1;
+  color: var(--psp-muted); font-size: 1.15em; line-height: 1;
 }
-.star:hover { color: var(--run); }
-.star.on { color: var(--run); }
+.star:hover { color: var(--psp-run); }
+.star.on { color: var(--psp-run); }
 .star-spacer { width: 18px; flex: none; }
 
 /* ---------- share row ---------- */
 .copy-btn { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 button.secondary {
   height: 24px; padding: 0 8px; border-radius: 2px; cursor: pointer; font: inherit;
-  background: var(--vscode-button-secondaryBackground, var(--vscode-dropdown-background));
-  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
-  border: 1px solid var(--vscode-button-border, transparent);
+  background: var(--psp-secondary-bg);
+  color: var(--psp-secondary-fg);
+  border: 1px solid var(--psp-button-border);
 }
-button.secondary:hover:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground)); }
+button.secondary:hover:not(:disabled) { background: var(--psp-secondary-hover); }
 button.secondary:disabled { opacity: 0.5; cursor: default; }
 
 /* ---------- copy icons (ticket + PR link) ---------- */
@@ -187,74 +235,74 @@ button.secondary:disabled { opacity: 0.5; cursor: default; }
 .pr-row .pr-link { margin-top: 0; flex: 1; min-width: 0; }
 .copy-icon {
   flex: none; background: none; border: none; padding: 0 3px; border-radius: 3px;
-  color: var(--muted); cursor: pointer; font: inherit; line-height: 1.2;
+  color: var(--psp-muted); cursor: pointer; font: inherit; line-height: 1.2;
 }
-.copy-icon:hover { color: var(--vscode-foreground); background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2)); }
-.copy-icon.done { color: var(--ok); }
+.copy-icon:hover { color: var(--psp-fg); background: var(--psp-tool-hover); }
+.copy-icon.done { color: var(--psp-ok); }
 
 /* Branch behind its base: a quiet label plus a dot on the gear. */
-.behind { flex: none; color: var(--run); font-size: 0.8em; opacity: 0.85; white-space: nowrap; }
+.behind { flex: none; color: var(--psp-run); font-size: 0.8em; opacity: 0.85; white-space: nowrap; }
 .gear.has-action { position: relative; }
 .gear.has-action::after {
   content: ""; position: absolute; top: 2px; right: 2px;
-  width: 6px; height: 6px; border-radius: 50%; background: var(--run);
+  width: 6px; height: 6px; border-radius: 50%; background: var(--psp-run);
 }
-.pr-menu-sep { border-top: 1px solid var(--border); margin: 4px 0; }
-.queued { flex: none; color: var(--ok); font-size: 0.8em; opacity: 0.85; white-space: nowrap; }
+.pr-menu-sep { border-top: 1px solid var(--psp-border); margin: 4px 0; }
+.queued { flex: none; color: var(--psp-ok); font-size: 0.8em; opacity: 0.85; white-space: nowrap; }
 .copy-split { position: relative; display: flex; flex: 1; min-width: 0; }
 .copy-split .copy-btn { border-top-right-radius: 0; border-bottom-right-radius: 0; }
-.copy-caret { flex: none; padding: 0 8px; border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 1px solid var(--border); }
+.copy-caret { flex: none; padding: 0 8px; border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 1px solid var(--psp-border); }
 .copy-menu { left: 0; right: auto; top: calc(100% + 2px); min-width: 230px; }
 .copy-menu[hidden] { display: none; }
 .copy-item { display: flex; justify-content: space-between; gap: 16px; }
 .copy-item.current { font-weight: 600; }
-.copy-count { color: var(--muted); font-variant-numeric: tabular-nums; }
+.copy-count { color: var(--psp-muted); font-variant-numeric: tabular-nums; }
 
 /* ---------- tabs ---------- */
-.tabs { display: flex; gap: 2px; padding-top: 6px; border-bottom: 1px solid var(--border); }
+.tabs { display: flex; gap: 2px; padding-top: 6px; border-bottom: 1px solid var(--psp-border); }
 .tab {
   flex: 1; background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer;
-  color: var(--muted); font: inherit; padding: 5px 4px; margin-bottom: -1px;
+  color: var(--psp-muted); font: inherit; padding: 5px 4px; margin-bottom: -1px;
 }
-.tab:hover { color: var(--vscode-foreground); }
-.tab.active { color: var(--vscode-foreground); border-bottom-color: var(--vscode-focusBorder); font-weight: 600; }
+.tab:hover { color: var(--psp-fg); }
+.tab.active { color: var(--psp-fg); border-bottom-color: var(--psp-focus); font-weight: 600; }
 .pane[hidden], .row[hidden] { display: none; }
 
 /* ---------- Deployments tab ---------- */
 .mini-input { flex: 0 0 90px; height: 24px; margin-bottom: 0; }
 .small-label { flex: none; font-size: 0.9em; }
-.aws-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px; padding: 5px 0; font-size: 0.9em; border-bottom: 1px solid var(--border); }
-.aws-bar.warn-bar .aws-msg { color: var(--run); }
+.aws-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px; padding: 5px 0; font-size: 0.9em; border-bottom: 1px solid var(--psp-border); }
+.aws-bar.warn-bar .aws-msg { color: var(--psp-run); }
 .aws-bar .actions { margin-top: 0; }
 .summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
-.chip { font-size: 0.88em; border-radius: 10px; padding: 0 7px; line-height: 1.6; border: 1px solid var(--border); white-space: nowrap; }
-.chip.st-failing { color: var(--bad); }
-.chip.st-running, .chip.st-waiting { color: var(--run); }
-.chip.st-ready { color: var(--ok); }
+.chip { font-size: 0.88em; border-radius: 10px; padding: 0 7px; line-height: 1.6; border: 1px solid var(--psp-border); white-space: nowrap; }
+.chip.st-failing { color: var(--psp-bad); }
+.chip.st-running, .chip.st-waiting { color: var(--psp-run); }
+.chip.st-ready { color: var(--psp-ok); }
 .hint { margin: 8px 0; font-size: 0.92em; }
-.card.st-waiting { border-left-color: var(--run); }
+.card.st-waiting { border-left-color: var(--psp-run); }
 
 .stage-track { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 4px; font-size: 0.88em; margin-top: 6px; }
 .stage { white-space: nowrap; }
-.stage.local { color: var(--run); }
-.stage.deployed { color: var(--ok); }
-.stage.partial { color: var(--run); }
-.stage.not-yet { color: var(--muted); }
-.stage.unknown { color: var(--muted); opacity: 0.7; }
-.stage.reverted, .stage.failed { color: var(--bad); }
-.stage-sep { color: var(--rest); letter-spacing: -1px; }
-.pipelines .pipe { display: grid; grid-template-columns: minmax(70px, 30%) 1fr; gap: 6px; padding: 2px 0; border-top: 1px dashed var(--border); }
-.pipe-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-foreground); }
+.stage.local { color: var(--psp-run); }
+.stage.deployed { color: var(--psp-ok); }
+.stage.partial { color: var(--psp-run); }
+.stage.not-yet { color: var(--psp-muted); }
+.stage.unknown { color: var(--psp-muted); opacity: 0.7; }
+.stage.reverted, .stage.failed { color: var(--psp-bad); }
+.stage-sep { color: var(--psp-rest); letter-spacing: -1px; }
+.pipelines .pipe { display: grid; grid-template-columns: minmax(70px, 30%) 1fr; gap: 6px; padding: 2px 0; border-top: 1px dashed var(--psp-border); }
+.pipe-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--psp-fg); }
 .pipe-stages { display: flex; flex-wrap: wrap; gap: 2px 10px; }
 
 .actions { display: flex; flex-wrap: wrap; gap: 4px; }
 .act {
   font: inherit; font-size: 0.88em; cursor: pointer; border-radius: 3px; padding: 1px 7px;
-  background: var(--vscode-button-secondaryBackground, var(--vscode-dropdown-background));
-  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
-  border: 1px solid var(--vscode-button-border, var(--border));
+  background: var(--psp-secondary-bg);
+  color: var(--psp-secondary-fg);
+  border: 1px solid var(--psp-act-border);
 }
-.act:hover { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground)); }
+.act:hover { background: var(--psp-secondary-hover); }
 
 /* Deployments: Local → Merged → stages, as boxes; dates live in the tooltips. */
 .steps { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 3px; margin-top: 7px; font-size: 0.86em; }
@@ -264,12 +312,12 @@ button.secondary:disabled { opacity: 0.5; cursor: default; }
   width: 0.85em; height: 0.85em; box-sizing: border-box; border-radius: 2px; border: 1px solid currentColor;
   font-size: 1em; line-height: 1; font-weight: 700;
 }
-.step.done { color: var(--ok); }
-.step.done .box { background: var(--ok); border-color: var(--ok); color: var(--vscode-editor-background, #1e1e1e); }
-.step.todo, .step.partial { color: var(--run); }
-.step.bad { color: var(--bad); }
-.step.bad .box { background: var(--bad); border-color: var(--bad); color: var(--vscode-editor-background, #1e1e1e); }
-.arrow { color: var(--muted); padding: 0 1px; }
+.step.done { color: var(--psp-ok); }
+.step.done .box { background: var(--psp-ok); border-color: var(--psp-ok); color: var(--psp-card); }
+.step.todo, .step.partial { color: var(--psp-run); }
+.step.bad { color: var(--psp-bad); }
+.step.bad .box { background: var(--psp-bad); border-color: var(--psp-bad); color: var(--psp-card); }
+.arrow { color: var(--psp-muted); padding: 0 1px; }
 .pipe-stages .step { font-size: 0.95em; }
 .step .box { font-size: inherit; }
 .step .box:not(:empty) { font-size: 0.7em; width: 1.2em; height: 1.2em; }

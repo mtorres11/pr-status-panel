@@ -1,16 +1,30 @@
 // The panel's UI state (filters, sort, copy options, Deployments filters): its shape, defaults and validation.
 // Every value comes from the webview or from storage, so each one is checked before use.
 
-import { COPY_FORMATS, COPY_GROUPS, CopyFormat, CopyGroup } from "./copy";
-import { DEFAULT_DEPLOY_UI, deployPatch, DeployUi } from "./deployFilters";
+import { COPY_FORMAT_OPTIONS, COPY_FORMATS, COPY_GROUPS, CopyFormat, CopyGroup } from "./copy";
+import { DEFAULT_DEPLOY_UI, deployPatch, DeployUi, STATE_OPTIONS, WHEN_OPTIONS } from "./deployFilters";
 import type { KeyValueStore } from "./ports";
 import { asRecord, isLogin, isRepo, oneOf, pickValid } from "./validate";
 
-export const SHOW_MODES = ["authored", "review", "assigned", "all"] as const;
-export const SORT_MODES = ["attention", "updated", "ticket"] as const;
+/** A choice in a dropdown: the stored value and its label. */
+export type Option<T> = readonly [T, string];
 
-export type ShowMode = (typeof SHOW_MODES)[number];
-export type SortMode = (typeof SORT_MODES)[number];
+const SHOW_OPTIONS = [
+  ["authored", "Authored"],
+  ["review", "Review requested"],
+  ["assigned", "Assigned"],
+  ["all", "All of these"],
+] as const;
+const SORT_OPTIONS = [
+  ["attention", "Needs attention"],
+  ["updated", "Last updated"],
+  ["ticket", "Ticket"],
+] as const;
+
+export type ShowMode = (typeof SHOW_OPTIONS)[number][0];
+export type SortMode = (typeof SORT_OPTIONS)[number][0];
+
+const values = <T>(options: readonly Option<T>[]): T[] => options.map(([v]) => v);
 
 /** The PR tab's filters and copy options. */
 export interface PrUi {
@@ -45,9 +59,9 @@ export const DEFAULT_UI: UiState = {
 const VALID: Record<keyof PrUi, (v: unknown) => boolean> = {
   author: (v) => v === "@me" || v === "@team" || v === "@other" || isLogin(v),
   repo: (v) => v === "*" || isRepo(v),
-  show: oneOf(SHOW_MODES),
+  show: oneOf(values(SHOW_OPTIONS)),
   drafts: (v) => typeof v === "boolean",
-  sort: oneOf(SORT_MODES),
+  sort: oneOf(values(SORT_OPTIONS)),
   copyGroup: oneOf(COPY_GROUPS),
   copyFormat: oneOf(COPY_FORMATS),
 };
@@ -71,6 +85,17 @@ export function storedUi(raw: unknown): UiState {
   if (!valid.copyFormat && stored.addDescription === true) valid.copyFormat = "ticket";
   return { ...DEFAULT_UI, ...valid };
 }
+
+/** Every dropdown's choices, sent to the webview so the lists live in one place. */
+export const UI_OPTIONS = {
+  show: SHOW_OPTIONS,
+  sort: SORT_OPTIONS,
+  copyFormats: COPY_FORMAT_OPTIONS,
+  deployWhen: WHEN_OPTIONS,
+  deployStates: STATE_OPTIONS,
+};
+
+export type UiOptions = typeof UI_OPTIONS;
 
 const KEY = "ui";
 

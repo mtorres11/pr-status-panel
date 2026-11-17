@@ -1,4 +1,5 @@
-import type { RawPullRequest } from "./githubPrs";
+import { CopyGroup, copyGroupsOf } from "./copy";
+import type { RawCheckContext, RawPullRequest } from "./githubPrs";
 import { ticketsOf, ticketUrl } from "./ticketLinks";
 import { MAX_REGEX_INPUT, safeRegex } from "./validate";
 
@@ -70,6 +71,10 @@ export interface PrView {
   headOid?: string;
   /** Behind its base and the viewer may update it. */
   canUpdateBranch: boolean;
+  /** Can be updated and worth flagging: not a draft, not already in the merge queue. */
+  behind: boolean;
+  /** The "Copy links" groups this PR belongs to. */
+  copyGroups: CopyGroup[];
   rerun: {
     /** Workflow runs with at least one failed check. */
     failedRunIds: number[];
@@ -96,150 +101,148 @@ const FAILED_CONCLUSIONS = new Set([
   "STALE",
 ]);
 
-function isBot(actor: { __typename: string; login: string } | null): boolean {
-  if (!actor) return false;
-  return actor.__typename === "Bot" || /\[bot\]$|^copilot/i.test(actor.login);
+/** Commit status states; anything else is still pending. */
+const STATUS_STATES: Record<string, CheckItem["state"]> = { SUCCESS: "passed", FAILURE: "failed", ERROR: "failed" };
+
+/** Display order of check states. */
+const CHECK_ORDER: CheckItem["state"][] = ["failed", "running", "pending", "passed", "skipped"];
+
+function checkState(c: RawCheckContext): CheckItem["state"] {
+  if (c.__typename !== "CheckRun") return STATUS_STATES[c.state ?? ""] ?? "pending";
+  if (c.status !== "COMPLETED") return c.status === "IN_PROGRESS" ? "running" : "pending";
+  if (c.conclusion === "SKIPPED" || c.conclusion === "NEUTRAL") return "skipped";
+  return c.conclusion && FAILED_CONCLUSIONS.has(c.conclusion) ? "failed" : "passed";
 }
 
-export function toView(
-  pr: RawPullRequest,
-  requiredApprovals: number,
-  opts: ModelOptions,
-): PrView {
-  // Ticket
-  const ticket = ticketsOf(pr, opts.ticketPattern)[0];
+function checkItem(c: RawCheckContext): CheckItem {
+  const run = c.__typename === "CheckRun";
+  return {
+    name: (run ? c.name : c.context) ?? "check",
+    state: checkState(c),
+    url: (run ? c.detailsUrl : c.targetUrl) ?? undefined,
+    runId: run ? (c.checkSuite?.workflowRun?.databaseId ?? undefined) : undefined,
+  };
+}
 
-  // Checks
-  const ignored = opts.ignoredChecks
-    .map((p) => safeRegex(p, "i"))
-    .filter((r): r is RegExp => !!r);
-  const contexts =
-    pr.commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes ?? [];
-  const items: CheckItem[] = [];
-  for (const c of contexts) {
-    const name = (c.__typename === "CheckRun" ? c.name : c.context) ?? "check";
-    if (ignored.some((r) => r.test(name.slice(0, MAX_REGEX_INPUT)))) continue;
-    let state: CheckItem["state"];
-    if (c.__typename === "CheckRun") {
-      if (c.status !== "COMPLETED")
-        state = c.status === "IN_PROGRESS" ? "running" : "pending";
-      else if (c.conclusion === "SKIPPED" || c.conclusion === "NEUTRAL")
-        state = "skipped";
-      else if (c.conclusion && FAILED_CONCLUSIONS.has(c.conclusion))
-        state = "failed";
-      else state = "passed";
-    } else {
-      state =
-        c.state === "SUCCESS"
-          ? "passed"
-          : c.state === "FAILURE" || c.state === "ERROR"
-            ? "failed"
-            : "pending";
-    }
-    items.push({
-      name,
-      state,
-      url:
-        (c.__typename === "CheckRun" ? c.detailsUrl : c.targetUrl) ?? undefined,
-      runId:
-        c.__typename === "CheckRun"
-          ? (c.checkSuite?.workflowRun?.databaseId ?? undefined)
-          : undefined,
-    });
-  }
-  const count = (s: CheckItem["state"]) =>
-    items.filter((i) => i.state === s).length;
-  const checks = {
+/** The head commit's checks, minus ignored ones: counted per state and sorted for display. */
+export function classifyChecks(pr: RawPullRequest, ignoredChecks: string[]): PrView["checks"] {
+  const ignored = ignoredChecks.map((p) => safeRegex(p, "i")).filter((r): r is RegExp => !!r);
+  const contexts = pr.commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes ?? [];
+  const items = contexts
+    .map(checkItem)
+    .filter((i) => !ignored.some((r) => r.test(i.name.slice(0, MAX_REGEX_INPUT))))
+    .sort((a, b) => CHECK_ORDER.indexOf(a.state) - CHECK_ORDER.indexOf(b.state) || a.name.localeCompare(b.name));
+  const count = (s: CheckItem["state"]) => items.filter((i) => i.state === s).length;
+  return {
     passed: count("passed"),
     failed: count("failed"),
     running: count("running"),
     pending: count("pending"),
     skipped: count("skipped"),
     total: items.length,
-    items: items.sort(
-      (a, b) => order(a.state) - order(b.state) || a.name.localeCompare(b.name),
-    ),
+    items,
   };
+}
 
-  // Review threads
-  const threadNodes = pr.reviewThreads.nodes.filter(
-    (t) =>
-      !(opts.ignoreBotThreads && isBot(t.comments.nodes[0]?.author ?? null)),
-  );
-  const threads = {
-    resolved: threadNodes.filter((t) => t.isResolved).length,
-    total: threadNodes.length,
-    items: threadNodes
-      .filter((t) => !t.isResolved)
-      .map((t): ThreadItem => {
-        const first = t.comments.nodes[0];
-        const text = (first?.bodyText ?? "").replace(/\s+/g, " ").trim();
-        return {
-          author: first?.author?.login ?? "ghost",
-          where: t.path ? (t.line ? `${t.path}:${t.line}` : t.path) : "",
-          snippet:
-            text.length > SNIPPET_MAX
-              ? `${text.slice(0, SNIPPET_MAX - 1)}…`
-              : text,
-          url: first?.url ?? undefined,
-          outdated: t.isOutdated === true,
-        };
-      }),
+function isBot(actor: { __typename: string; login: string } | null): boolean {
+  if (!actor) return false;
+  return actor.__typename === "Bot" || /\[bot\]$|^copilot/i.test(actor.login);
+}
+
+type RawThread = RawPullRequest["reviewThreads"]["nodes"][number];
+
+function threadItem(t: RawThread): ThreadItem {
+  const first = t.comments.nodes[0];
+  const text = (first?.bodyText ?? "").replace(/\s+/g, " ").trim();
+  const where = t.path && t.line ? `${t.path}:${t.line}` : (t.path ?? "");
+  return {
+    author: first?.author?.login ?? "ghost",
+    where,
+    snippet: text.length > SNIPPET_MAX ? `${text.slice(0, SNIPPET_MAX - 1)}…` : text,
+    url: first?.url ?? undefined,
+    outdated: t.isOutdated === true,
   };
+}
 
-  // Approvals (latest opinionated review per writer), plus reviewers still asked to review
-  const reviews = pr.latestOpinionatedReviews.nodes;
-  const reviewItem = (
-    r: (typeof reviews)[number],
-    state: ReviewerItem["state"],
-  ): ReviewerItem => ({
-    name: r.author?.login ?? "ghost",
-    state,
-    url: r.url ?? undefined,
-  });
-  const requested = (pr.reviewRequests?.nodes ?? [])
+/** Review threads (optionally without bot-started ones): resolved count and the open ones. */
+export function summarizeThreads(pr: RawPullRequest, ignoreBotThreads: boolean): PrView["threads"] {
+  const nodes = pr.reviewThreads.nodes.filter((t) => !(ignoreBotThreads && isBot(t.comments.nodes[0]?.author ?? null)));
+  return {
+    resolved: nodes.filter((t) => t.isResolved).length,
+    total: nodes.length,
+    items: nodes.filter((t) => !t.isResolved).map(threadItem),
+  };
+}
+
+type RawReview = RawPullRequest["latestOpinionatedReviews"]["nodes"][number];
+
+/** Reviewers still asked to review (users or teams). */
+function requestedReviewers(pr: RawPullRequest): ReviewerItem[] {
+  return (pr.reviewRequests?.nodes ?? [])
     .map((n) => n.requestedReviewer)
     .filter((r): r is NonNullable<typeof r> => !!r)
-    .map((r): ReviewerItem => ({
-      name: r.__typename === "Team" ? `team ${r.name}` : r.login,
-      state: "requested",
-    }));
-  const approvals = {
-    approved: reviews.filter((r) => r.state === "APPROVED").length,
-    required: requiredApprovals,
-    changesRequested: reviews.filter((r) => r.state === "CHANGES_REQUESTED")
-      .length,
-    // changes requested first, then still to review, then approved
-    items: [
-      ...reviews
-        .filter((r) => r.state === "CHANGES_REQUESTED")
-        .map((r) => reviewItem(r, "changes")),
-      ...requested,
-      ...reviews
-        .filter((r) => r.state === "APPROVED")
-        .map((r) => reviewItem(r, "approved")),
-    ],
-  };
+    .map((r) => ({ name: r.__typename === "Team" ? `team ${r.name}` : r.login, state: "requested" }));
+}
 
-  // Overall status
-  let status: PrStatus;
-  if (pr.isDraft) status = "draft";
-  else if (checks.failed > 0) status = "failing";
-  else if (
-    approvals.changesRequested > 0 ||
-    pr.reviewDecision === "CHANGES_REQUESTED"
-  )
-    status = "changes";
-  else if (checks.running + checks.pending > 0) status = "running";
-  else if (
-    approvals.approved >= approvals.required &&
-    threads.resolved === threads.total &&
-    pr.mergeable !== "CONFLICTING"
-  )
-    status = "ready";
-  else status = "waiting";
-
+/**
+ * Approvals from the latest opinionated review per writer, plus reviewers still asked to review:
+ * changes requested first, then still to review, then approved.
+ */
+export function summarizeReviews(pr: RawPullRequest, required: number): PrView["approvals"] {
+  const reviews = pr.latestOpinionatedReviews.nodes;
+  const withState = (state: string, as: ReviewerItem["state"]) =>
+    reviews
+      .filter((r: RawReview) => r.state === state)
+      .map((r): ReviewerItem => ({ name: r.author?.login ?? "ghost", state: as, url: r.url ?? undefined }));
+  const changes = withState("CHANGES_REQUESTED", "changes");
+  const approved = withState("APPROVED", "approved");
   return {
+    approved: approved.length,
+    required,
+    changesRequested: changes.length,
+    items: [...changes, ...requestedReviewers(pr), ...approved],
+  };
+}
+
+/** One status per PR, in order of what needs attention first. */
+export function deriveStatus(
+  pr: RawPullRequest,
+  checks: PrView["checks"],
+  threads: PrView["threads"],
+  approvals: PrView["approvals"],
+): PrStatus {
+  if (pr.isDraft) return "draft";
+  if (checks.failed > 0) return "failing";
+  if (approvals.changesRequested > 0 || pr.reviewDecision === "CHANGES_REQUESTED") return "changes";
+  if (checks.running + checks.pending > 0) return "running";
+  const ready =
+    approvals.approved >= approvals.required && threads.resolved === threads.total && pr.mergeable !== "CONFLICTING";
+  return ready ? "ready" : "waiting";
+}
+
+function uniq(ids: (number | undefined)[]): number[] {
+  return [...new Set(ids.filter((n): n is number => typeof n === "number"))];
+}
+
+/** The GitHub Actions workflow runs behind the checks, for "Re-run failed" and "Re-run all". */
+export function rerunTargets(items: CheckItem[]): PrView["rerun"] {
+  const failed = items.filter((i) => i.state === "failed");
+  return {
+    failedRunIds: uniq(failed.map((i) => i.runId)),
+    allRunIds: uniq(items.map((i) => i.runId)),
+    failedExternal: failed.filter((i) => !i.runId).length,
+  };
+}
+
+/** Everything a PR card shows, from a raw GitHub PR. */
+export function toView(pr: RawPullRequest, requiredApprovals: number, opts: ModelOptions): PrView {
+  const ticket = ticketsOf(pr, opts.ticketPattern)[0];
+  const checks = classifyChecks(pr, opts.ignoredChecks);
+  const threads = summarizeThreads(pr, opts.ignoreBotThreads);
+  const approvals = summarizeReviews(pr, requiredApprovals);
+  const inMergeQueue = pr.isInMergeQueue === true;
+  const canUpdateBranch = pr.viewerCanUpdateBranch === true;
+  const view: Omit<PrView, "copyGroups"> = {
     id: pr.id,
     repo: pr.repository.nameWithOwner,
     number: pr.number,
@@ -248,32 +251,19 @@ export function toView(
     author: pr.author?.login ?? "ghost",
     updatedAt: pr.updatedAt,
     isDraft: pr.isDraft,
-    inMergeQueue: pr.isInMergeQueue === true,
+    inMergeQueue,
     ticket,
     ticketUrl: ticketUrl(opts.jiraBaseUrl, ticket),
-    status,
+    status: deriveStatus(pr, checks, threads, approvals),
     checks,
     threads,
     approvals,
     mergeable: pr.mergeable,
     baseRef: pr.baseRefName,
     headOid: pr.headRefOid,
-    canUpdateBranch: pr.viewerCanUpdateBranch === true,
-    rerun: {
-      failedRunIds: uniq(
-        items.filter((i) => i.state === "failed").map((i) => i.runId),
-      ),
-      allRunIds: uniq(items.map((i) => i.runId)),
-      failedExternal: items.filter((i) => i.state === "failed" && !i.runId)
-        .length,
-    },
+    canUpdateBranch,
+    behind: canUpdateBranch && !pr.isDraft && !inMergeQueue,
+    rerun: rerunTargets(checks.items),
   };
-}
-
-function uniq(ids: (number | undefined)[]): number[] {
-  return [...new Set(ids.filter((n): n is number => typeof n === "number"))];
-}
-
-function order(s: CheckItem["state"]): number {
-  return ["failed", "running", "pending", "passed", "skipped"].indexOf(s);
+  return { ...view, copyGroups: copyGroupsOf(view) };
 }

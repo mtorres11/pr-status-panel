@@ -9,7 +9,7 @@ interface RawActor {
   login: string;
 }
 
-interface RawCheckContext {
+export interface RawCheckContext {
   __typename: "CheckRun" | "StatusContext";
   name?: string;
   status?: string;

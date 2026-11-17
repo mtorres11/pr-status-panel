@@ -154,9 +154,17 @@ describe("toView: status", () => {
     assert.equal(toView(rawPr({ ...approved, mergeable: "CONFLICTING" }, ok), 1, OPTS).status, "waiting");
   });
 
+  test("behind and copy groups come with the view", () => {
+    const behind = toView(rawPr({ viewerCanUpdateBranch: true }, ok), 1, OPTS);
+    assert.equal(behind.behind, true);
+    assert.deepEqual(behind.copyGroups, ["approval", "waiting", "behind", "all"]);
+    assert.equal(toView(rawPr({ viewerCanUpdateBranch: true, isDraft: true }), 1, OPTS).behind, false);
+  });
+
   test("copies the PR facts the panel shows", () => {
     const v = toView(rawPr({ isInMergeQueue: true, viewerCanUpdateBranch: true, headRefOid: "abc", author: null }), 0, OPTS);
     assert.equal(v.inMergeQueue, true);
+    assert.equal(v.behind, false);
     assert.equal(v.canUpdateBranch, true);
     assert.equal(v.headOid, "abc");
     assert.equal(v.author, "ghost");

@@ -3,9 +3,10 @@
 // values again against the extension's own data (known PR ids, https links, valid repos).
 
 import { COPY_FORMATS, COPY_GROUPS, CopyFormat, CopyGroup } from "./copy";
-import type { AwsStatus, DeployPr } from "./deployService";
+import type { AwsStatus } from "./deployService";
+import type { DeployPrView } from "./deploySummary";
 import type { PrView } from "./model";
-import type { UiState } from "./uiState";
+import type { UiOptions, UiState } from "./uiState";
 import { asRecord, isHttpsUrl, isRepo, oneOf } from "./validate";
 
 /** Webview → extension. */
@@ -47,7 +48,10 @@ export interface About {
 
 /** What the Deployments tab draws. */
 export interface DeployPayload {
-  prs: DeployPr[];
+  /** Every PR found; `shown` says which pass the "Where" filter. */
+  prs: DeployPrView[];
+  /** Every stage name in the list, in pipeline order; each PR's `stages` follows it. */
+  stageNames: string[];
   loading: boolean;
   error?: string;
   hint?: string;
@@ -62,6 +66,8 @@ export interface DeployPayload {
 /** Everything the webview draws, sent whole on every change. */
 export interface Payload {
   ui: UiState;
+  /** Choices of each dropdown. */
+  options: UiOptions;
   accounts: AccountChoice[];
   viewerLogin?: string;
   team: string[];

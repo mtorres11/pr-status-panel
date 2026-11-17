@@ -15,11 +15,19 @@ export const COPY_GROUPS = [
 ] as const;
 export type CopyGroup = (typeof COPY_GROUPS)[number];
 
-export const COPY_FORMATS = ["links", "ticket", "markdown"] as const;
-export type CopyFormat = (typeof COPY_FORMATS)[number];
+export const COPY_FORMAT_OPTIONS = [
+  ["links", "Links"],
+  ["ticket", "Ticket + title + link"],
+  ["markdown", "Markdown list"],
+] as const;
+export type CopyFormat = (typeof COPY_FORMAT_OPTIONS)[number][0];
+export const COPY_FORMATS: readonly CopyFormat[] = COPY_FORMAT_OPTIONS.map(([v]) => v);
 
-/** Which PRs each copy group takes. Mirrors COPY_GROUP_TEST in media/main.js. */
-const GROUP_TEST: Record<CopyGroup, (p: PrView) => boolean> = {
+/** What group membership depends on. */
+type GroupFacts = Pick<PrView, "approvals" | "status" | "isDraft" | "behind" | "inMergeQueue">;
+
+/** Which PRs each copy group takes. */
+const GROUP_TEST: Record<CopyGroup, (p: GroupFacts) => boolean> = {
   approval: (p) => p.approvals.approved < p.approvals.required && !p.inMergeQueue,
   waiting: (p) => p.status === "waiting",
   ready: (p) => p.status === "ready",
@@ -27,13 +35,18 @@ const GROUP_TEST: Record<CopyGroup, (p: PrView) => boolean> = {
   changes: (p) => p.status === "changes",
   running: (p) => p.status === "running",
   drafts: (p) => p.isDraft,
-  behind: (p) => p.canUpdateBranch && !p.isDraft && !p.inMergeQueue,
+  behind: (p) => p.behind,
   queued: (p) => p.inMergeQueue,
   all: () => true,
 };
 
-export function inGroup(p: PrView, group: CopyGroup): boolean {
+export function inGroup(p: GroupFacts, group: CopyGroup): boolean {
   return GROUP_TEST[group](p);
+}
+
+/** Every group a PR belongs to, in menu order (sent to the panel so it never re-implements the rules). */
+export function copyGroupsOf(p: GroupFacts): CopyGroup[] {
+  return COPY_GROUPS.filter((g) => GROUP_TEST[g](p));
 }
 
 /** Section titles for "All shown", in the same order as the list. */

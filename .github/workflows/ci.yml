@@ -17,6 +17,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts
-      - run: node --check media/main.js
+      - run: npm run check:webview
       - run: npm run test:coverage
       - run: npm run package

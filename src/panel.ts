@@ -12,7 +12,7 @@ import { PrActions } from "./prActions";
 import { PrTab } from "./prTab";
 import { About, MessageHandlers, Payload, routeMessage } from "./protocol";
 import { messageHandlers } from "./router";
-import { UiStateStore, validPatch } from "./uiState";
+import { UI_OPTIONS, UiStateStore, validPatch } from "./uiState";
 import { isLogin } from "./validate";
 
 /** UI keys that only change how the list is drawn. */
@@ -179,6 +179,7 @@ export class Panel {
     const acct = this.github.current();
     return {
       ui: { ...this.uiState.get(), accountKey: acct?.key },
+      options: UI_OPTIONS,
       accounts: this.github.accounts.map(({ key, label }) => ({ key, label })),
       viewerLogin: this.github.viewer,
       team: cfg.teamMembers,

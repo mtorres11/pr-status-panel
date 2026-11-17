@@ -53,6 +53,8 @@ describe("Panel", () => {
     assert.equal(p.needsSignIn, false);
     assert.equal(p.about.author, "A");
     assert.equal(p.deploy.loading, false);
+    assert.deepEqual(p.options.sort.map(([v]) => v), ["attention", "updated", "ticket"]);
+    assert.deepEqual(p.prs[0].copyGroups, ["approval", "waiting", "all"]);
   });
 
   test("display-only changes only redraw; filter changes reload; invalid patches redraw", async () => {

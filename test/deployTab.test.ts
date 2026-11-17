@@ -40,7 +40,16 @@ describe("DeployTab", () => {
     assert.equal(r.ignoreStages?.source, "^source$");
     assert.equal(tab.updatedAt, 42);
     assert.equal(tab.loading, false);
-    assert.deepEqual(tab.payload(), { prs: [], aws: { state: "ok" }, error: undefined, updatedAt: 42, loading: false, profile: "dev", canSignIn: false });
+    assert.deepEqual(tab.payload(), {
+      prs: [],
+      stageNames: [],
+      aws: { state: "ok" },
+      error: undefined,
+      updatedAt: 42,
+      loading: false,
+      profile: "dev",
+      canSignIn: false,
+    });
   });
 
   test("signed out: an empty list; errors are kept for the panel; reload empties first", async () => {

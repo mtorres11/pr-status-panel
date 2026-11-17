@@ -12,3 +12,4 @@ out-test/**
 coverage/**
 test/**
 tsconfig.test.json
+tsconfig.webview.json

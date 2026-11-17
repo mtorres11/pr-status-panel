@@ -2,6 +2,7 @@
 
 import type { DeployRawPr } from "../src/deployGithub";
 import type { RawPullRequest } from "../src/githubPrs";
+import { copyGroupsOf } from "../src/copy";
 import type { PrView } from "../src/model";
 
 type Rollup = NonNullable<RawPullRequest["commits"]["nodes"][number]["commit"]["statusCheckRollup"]>;
@@ -47,9 +48,9 @@ export function status(context: string, state: string): Context {
   return { __typename: "StatusContext", context, state, targetUrl: null };
 }
 
-/** A PR view with everything passing and nothing pending. */
+/** A PR view with everything passing and nothing pending; `behind` and the copy groups follow the rest. */
 export function view(over: Partial<PrView> = {}): PrView {
-  return {
+  const v: Omit<PrView, "behind" | "copyGroups"> = {
     id: "PR_1",
     repo: "o/r",
     number: 1,
@@ -69,6 +70,8 @@ export function view(over: Partial<PrView> = {}): PrView {
     rerun: { failedRunIds: [], allRunIds: [], failedExternal: 0 },
     ...over,
   };
+  const behind = over.behind ?? (v.canUpdateBranch && !v.isDraft && !v.inMergeQueue);
+  return { ...v, behind, copyGroups: copyGroupsOf({ ...v, behind }) };
 }
 
 /** A Deployments search result. */
