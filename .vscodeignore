@@ -8,3 +8,7 @@ tsconfig.json
 CONTRIBUTING.md
 SECURITY.md
 docs/**
+out-test/**
+coverage/**
+test/**
+tsconfig.test.json

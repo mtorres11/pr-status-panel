@@ -18,4 +18,5 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: node --check media/main.js
+      - run: npm run test:coverage
       - run: npm run package
