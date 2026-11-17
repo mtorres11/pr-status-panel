@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import * as assert from "node:assert/strict";
-import { ModelOptions, toView } from "../src/model";
+import { ModelOptions, toView } from "../src/core/model";
 import { rawPr, run, status } from "./helpers";
 
 const OPTS: ModelOptions = {

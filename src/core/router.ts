@@ -6,7 +6,7 @@ import type { PrActions } from "./prActions";
 import type { HostUi } from "./ports";
 import type { MessageHandlers } from "./protocol";
 
-export interface RouterTargets {
+interface RouterTargets {
   panel: {
     /** The webview loaded: send it everything, then refresh. */
     ready(): void;

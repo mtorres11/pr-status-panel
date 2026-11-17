@@ -10,7 +10,7 @@ import { LatestWins } from "./latestWins";
 import type { HostUi, Settings } from "./ports";
 import type { DeployPayload } from "./protocol";
 
-export interface DeployTabDeps {
+interface DeployTabDeps {
   /** Signed-in GitHub, or undefined when signed out. */
   github: () => Promise<Connection | undefined>;
   ui: () => DeployUi;

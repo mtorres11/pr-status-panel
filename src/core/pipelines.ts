@@ -20,7 +20,7 @@ const HISTORY_TTL_MS = 5 * 60_000;
 const LIST_TTL_MS = 30 * 60_000;
 
 /** Runs one `aws codepipeline` command and returns its JSON output. */
-export type CodePipelineRun = (cfg: AwsConfig, args: string[]) => Promise<unknown>;
+type CodePipelineRun = (cfg: AwsConfig, args: string[]) => Promise<unknown>;
 
 /** The CLI bound to one configuration. */
 type Cli = <T>(args: string[]) => Promise<T>;

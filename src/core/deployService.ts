@@ -36,9 +36,7 @@ export interface DeployPr {
   state: "OPEN" | "MERGED" | "CLOSED";
   isDraft: boolean;
   createdAt: string;
-  updatedAt: string;
   mergedAt?: string;
-  reviewDecision?: string;
   ticket?: string;
   ticketUrl?: string;
   /** Whether the change is in the chosen branch; undefined when unknown. */
@@ -79,7 +77,7 @@ interface RepoContext {
 }
 
 /** GitHub reads the service needs (the real ones by default). */
-export interface DeployPrReader {
+interface DeployPrReader {
   search(api: ApiTarget, q: string): Promise<DeployRawPr[]>;
   get(api: ApiTarget, repo: string, number: number): Promise<DeployRawPr | undefined>;
 }
@@ -91,7 +89,7 @@ export interface DeployServiceDeps {
 }
 
 /** The real GitHub and AWS readers. */
-export function defaultDeployDeps(): DeployServiceDeps {
+function defaultDeployDeps(): DeployServiceDeps {
   return {
     branches: new BranchCommits(),
     pipelines: new PipelineReader(),
@@ -217,9 +215,7 @@ export class DeployService {
       state: r.state,
       isDraft: r.isDraft,
       createdAt: r.createdAt,
-      updatedAt: r.updatedAt,
       mergedAt: r.mergedAt ?? undefined,
-      reviewDecision: r.reviewDecision ?? undefined,
       ticket,
       ticketUrl: ticketUrl(req.jiraBaseUrl, ticket),
       tracks: [],

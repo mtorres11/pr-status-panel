@@ -11,7 +11,7 @@ const ROLES: Record<ShowMode, string[]> = {
   all: ["author", "review-requested", "assignee"],
 };
 
-export interface PrSearchContext {
+interface PrSearchContext {
   viewer: string;
   teamMembers: string[];
   organizations: string[];

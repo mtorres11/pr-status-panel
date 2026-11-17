@@ -2,7 +2,7 @@
 // One PR card of the PR tab: status, ticket, links, the Checks / Comments / Approvals boxes, the expandable
 // lists and the ⚙ menu. Every fact comes from the extension; this file only draws it.
 (function () {
-  /** @typedef {import('../src/model').PrView} PrView */
+  /** @typedef {import('../src/core/model').PrView} PrView */
 
   /** @type {any} */
   const ns = ((/** @type {any} */ (window)).PrStatus ??= {});

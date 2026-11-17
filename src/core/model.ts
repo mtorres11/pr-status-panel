@@ -6,7 +6,7 @@ import { MAX_REGEX_INPUT, safeRegex } from "./validate";
 export type PrStatus =
   "failing" | "changes" | "running" | "waiting" | "ready" | "draft";
 
-export interface CheckItem {
+interface CheckItem {
   name: string;
   state: "passed" | "failed" | "running" | "pending" | "skipped";
   url?: string;
@@ -15,7 +15,7 @@ export interface CheckItem {
 }
 
 /** An unresolved review thread, for the expandable list under the card. */
-export interface ThreadItem {
+interface ThreadItem {
   author: string;
   /** File and line the thread is on, e.g. "src/a.ts:12"; empty for a file-level thread. */
   where: string;
@@ -26,7 +26,7 @@ export interface ThreadItem {
 }
 
 /** One reviewer, for the expandable approvals list. */
-export interface ReviewerItem {
+interface ReviewerItem {
   name: string;
   state: "changes" | "requested" | "approved";
   url?: string;
@@ -125,7 +125,7 @@ function checkItem(c: RawCheckContext): CheckItem {
 }
 
 /** The head commit's checks, minus ignored ones: counted per state and sorted for display. */
-export function classifyChecks(pr: RawPullRequest, ignoredChecks: string[]): PrView["checks"] {
+function classifyChecks(pr: RawPullRequest, ignoredChecks: string[]): PrView["checks"] {
   const ignored = ignoredChecks.map((p) => safeRegex(p, "i")).filter((r): r is RegExp => !!r);
   const contexts = pr.commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes ?? [];
   const items = contexts
@@ -165,7 +165,7 @@ function threadItem(t: RawThread): ThreadItem {
 }
 
 /** Review threads (optionally without bot-started ones): resolved count and the open ones. */
-export function summarizeThreads(pr: RawPullRequest, ignoreBotThreads: boolean): PrView["threads"] {
+function summarizeThreads(pr: RawPullRequest, ignoreBotThreads: boolean): PrView["threads"] {
   const nodes = pr.reviewThreads.nodes.filter((t) => !(ignoreBotThreads && isBot(t.comments.nodes[0]?.author ?? null)));
   return {
     resolved: nodes.filter((t) => t.isResolved).length,
@@ -188,7 +188,7 @@ function requestedReviewers(pr: RawPullRequest): ReviewerItem[] {
  * Approvals from the latest opinionated review per writer, plus reviewers still asked to review:
  * changes requested first, then still to review, then approved.
  */
-export function summarizeReviews(pr: RawPullRequest, required: number): PrView["approvals"] {
+function summarizeReviews(pr: RawPullRequest, required: number): PrView["approvals"] {
   const reviews = pr.latestOpinionatedReviews.nodes;
   const withState = (state: string, as: ReviewerItem["state"]) =>
     reviews
@@ -205,7 +205,7 @@ export function summarizeReviews(pr: RawPullRequest, required: number): PrView["
 }
 
 /** One status per PR, in order of what needs attention first. */
-export function deriveStatus(
+function deriveStatus(
   pr: RawPullRequest,
   checks: PrView["checks"],
   threads: PrView["threads"],
@@ -225,7 +225,7 @@ function uniq(ids: (number | undefined)[]): number[] {
 }
 
 /** The GitHub Actions workflow runs behind the checks, for "Re-run failed" and "Re-run all". */
-export function rerunTargets(items: CheckItem[]): PrView["rerun"] {
+function rerunTargets(items: CheckItem[]): PrView["rerun"] {
   const failed = items.filter((i) => i.state === "failed");
   return {
     failedRunIds: uniq(failed.map((i) => i.runId)),

@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import * as assert from "node:assert/strict";
-import { MessageHandlers, parseMessage, routeMessage, WebviewMessage } from "../src/protocol";
+import { MessageHandlers, parseMessage, routeMessage, WebviewMessage } from "../src/core/protocol";
 
 describe("parseMessage", () => {
   test("drops unknown types and non-objects", () => {

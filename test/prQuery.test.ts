@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import * as assert from "node:assert/strict";
-import { prQueries } from "../src/prQuery";
-import { DEFAULT_UI } from "../src/uiState";
+import { prQueries } from "../src/core/prQuery";
+import { DEFAULT_UI } from "../src/core/uiState";
 
 const CTX = { viewer: "me", teamMembers: ["ann", "bob"], organizations: ["acme", "labs"] };
 

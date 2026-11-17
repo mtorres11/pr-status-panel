@@ -10,7 +10,7 @@ const SCOPES = ["repo", "read:org"];
 const GITHUB = "github";
 const ENTERPRISE = "github-enterprise";
 
-export interface AccountOption {
+interface AccountOption {
   key: string;
   providerId: string;
   account: AuthAccount;
@@ -27,7 +27,7 @@ export interface Connection {
 /** The stored key of an account: its provider and id. */
 export const accountKey = (providerId: string, accountId: string): string => `${providerId}:${accountId}`;
 
-export interface GitHubAuthDeps {
+interface GitHubAuthDeps {
   auth: Auth;
   ui: HostUi;
   uiState: UiStateStore;

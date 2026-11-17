@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import * as assert from "node:assert/strict";
-import { ActionExecution, commitsByExecution, ignoreAll, mainRevision, personFromArn, stageRuns } from "../src/pipelineRuns";
+import { ActionExecution, commitsByExecution, ignoreAll, mainRevision, personFromArn, stageRuns } from "../src/core/pipelineRuns";
 
 const SHA_A = "a".repeat(40);
 const SHA_B = "B".repeat(40);

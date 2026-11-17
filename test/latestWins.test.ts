@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import * as assert from "node:assert/strict";
-import { LatestWins } from "../src/latestWins";
+import { LatestWins } from "../src/core/latestWins";
 
 /** A promise with its resolve function, to finish tasks in a chosen order. */
 function deferred() {

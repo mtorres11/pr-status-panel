@@ -1,7 +1,7 @@
 import { afterEach, describe, test } from "node:test";
 import * as assert from "node:assert/strict";
-import { BranchCommits, getDeployPr, searchDeployPrs } from "../src/deployGithub";
-import { apiTargetFor } from "../src/github";
+import { BranchCommits, getDeployPr, searchDeployPrs } from "../src/core/deployGithub";
+import { apiTargetFor } from "../src/core/github";
 import { stubFetch } from "./fakes";
 
 const API = apiTargetFor(undefined, "tok");

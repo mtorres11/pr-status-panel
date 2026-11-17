@@ -1,7 +1,7 @@
 // The VS Code side of the ports: the only place that turns core requests into VS Code API calls.
 
 import * as vscode from "vscode";
-import type { Auth, HostUi, KeyValueStore, Settings } from "./ports";
+import type { Auth, HostUi, KeyValueStore, Settings } from "../core/ports";
 
 /** This extension's settings section. */
 export const CFG = "prStatus";

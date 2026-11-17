@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, mock, test } from "node:test";
 import * as assert from "node:assert/strict";
-import { DEFAULT_DEPLOY_UI, deployPatch, DeployUi, fetchPlan, SearchContext } from "../src/deployFilters";
+import { DEFAULT_DEPLOY_UI, deployPatch, DeployUi, fetchPlan, SearchContext } from "../src/core/deployFilters";
 
 const CTX: SearchContext = { viewer: "me", team: ["ann", "bob"], organizations: ["acme"], favoriteRepos: ["o/fav"] };
 const ui = (over: Partial<DeployUi> = {}): DeployUi => ({ ...DEFAULT_DEPLOY_UI, ...over });

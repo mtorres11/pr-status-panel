@@ -45,7 +45,7 @@
   "categories": [
     "Other"
   ],
-  "main": "./out/extension.js",
+  "main": "./out/host-vscode/extension.js",
   "activationEvents": [
     "onStartupFinished"
   ],
@@ -243,13 +243,14 @@
     }
   },
   "scripts": {
+    "clean": "node -e \"for (const d of ['out','out-test']) require('fs').rmSync(d,{recursive:true,force:true})\"",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "package": "npm run compile && vsce package --no-dependencies -o pr-status-panel.vsix",
-    "build:test": "node -e \"require('fs').rmSync('out-test',{recursive:true,force:true})\" && tsc -p tsconfig.test.json",
+    "check:webview": "tsc -p tsconfig.webview.json",
+    "build:test": "npm run clean && tsc -p tsconfig.test.json",
     "test": "npm run build:test && node --test \"out-test/test/**/*.test.js\"",
-    "test:coverage": "npm run build:test && node --test --experimental-test-coverage --test-coverage-include=\"out-test/src/**\" --test-coverage-exclude=\"out-test/src/extension.js\" --test-coverage-exclude=\"out-test/src/vscodeAdapters.js\" --test-coverage-exclude=\"out-test/src/viewProvider.js\" --test-coverage-lines=90 --test-coverage-branches=80 --test-coverage-functions=90 \"out-test/test/**/*.test.js\"",
-    "check:webview": "tsc -p tsconfig.webview.json"
+    "test:coverage": "npm run build:test && node --test --experimental-test-coverage --test-coverage-include=\"out-test/src/core/**\" --test-coverage-lines=90 --test-coverage-branches=80 --test-coverage-functions=90 \"out-test/test/**/*.test.js\"",
+    "package": "npm run clean && npm run compile && vsce package --no-dependencies -o pr-status-panel.vsix"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",

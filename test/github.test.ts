@@ -1,6 +1,6 @@
 import { afterEach, describe, test } from "node:test";
 import * as assert from "node:assert/strict";
-import { apiTargetFor, graphql, rest, restPost, searchPrs } from "../src/github";
+import { apiTargetFor, graphql, rest, restPost, searchPrs } from "../src/core/github";
 import { stubFetch } from "./fakes";
 
 const API = apiTargetFor(undefined, "tok");

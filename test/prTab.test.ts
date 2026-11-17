@@ -1,10 +1,10 @@
 import { describe, test } from "node:test";
 import * as assert from "node:assert/strict";
-import { readConfig } from "../src/config";
-import { GitHubAuth } from "../src/githubAuth";
-import type { PrClient } from "../src/githubPrs";
-import { PrTab } from "../src/prTab";
-import { DEFAULT_UI, PrUi, UiStateStore } from "../src/uiState";
+import { readConfig } from "../src/core/config";
+import { GitHubAuth } from "../src/core/githubAuth";
+import type { PrClient } from "../src/core/githubPrs";
+import { PrTab } from "../src/core/prTab";
+import { DEFAULT_UI, PrUi, UiStateStore } from "../src/core/uiState";
 import { fakeAuth, fakeClient, fakeSettings, fakeUi, memoryStore } from "./fakes";
 import { rawPr } from "./helpers";
 

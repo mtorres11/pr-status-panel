@@ -3,9 +3,9 @@
 // with the date it got there and who approved it. Where each PR is, and per stage how many pipelines have
 // it, come from the extension; this file only draws them.
 (function () {
-  /** @typedef {import('../src/protocol').Payload} Payload */
-  /** @typedef {import('../src/deploySummary').DeployPrView} DeployPrView */
-  /** @typedef {import('../src/deploySummary').StageSummary} StageSummary */
+  /** @typedef {import('../src/core/protocol').Payload} Payload */
+  /** @typedef {import('../src/core/deploySummary').DeployPrView} DeployPrView */
+  /** @typedef {import('../src/core/deploySummary').StageSummary} StageSummary */
 
   /** @type {any} */
   const ns = ((/** @type {any} */ (window)).PrStatus ??= {});

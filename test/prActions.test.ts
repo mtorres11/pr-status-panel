@@ -1,8 +1,8 @@
 import { describe, test } from "node:test";
 import * as assert from "node:assert/strict";
-import type { PrClient } from "../src/githubPrs";
-import type { PrView } from "../src/model";
-import { PrActions } from "../src/prActions";
+import type { PrClient } from "../src/core/githubPrs";
+import type { PrView } from "../src/core/model";
+import { PrActions } from "../src/core/prActions";
 import { fakeClient, fakeSettings, fakeUi } from "./fakes";
 import { view } from "./helpers";
 

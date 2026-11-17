@@ -169,9 +169,17 @@ Contributions are welcome through pull requests; see [CONTRIBUTING.md](CONTRIBUT
 
 ```
 npm install
-npm run compile      # or: npm run watch, then F5 in VS Code
-npm run package      # builds pr-status-panel.vsix
+npm run compile         # or: npm run watch, then F5 in VS Code
+npm test                # unit tests (Node's built-in runner)
+npm run test:coverage   # the same, failing below 90% lines / 80% branches / 90% functions
+npm run check:webview   # type-checks the webview scripts against the extension's types
+npm run package         # builds pr-status-panel.vsix
 ```
+
+The code is in three layers: `src/core` (everything that decides: GitHub and AWS reads, the PR and Deployments
+models, validation, the webview protocol; no VS Code imports, all unit-tested), `src/host-vscode` (activation, the
+webview view and the adapters that implement the core's ports with the VS Code API) and `media` (the webview, which
+only draws what the extension sends).
 
 No tokens are stored: authentication uses VS Code's built-in GitHub sign-in (`repo`, `read:org` scopes).
 

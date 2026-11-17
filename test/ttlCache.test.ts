@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import * as assert from "node:assert/strict";
-import { TtlCache } from "../src/ttlCache";
+import { TtlCache } from "../src/core/ttlCache";
 
 describe("TtlCache", () => {
   test("loads once within the TTL, again after it", async () => {

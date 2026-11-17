@@ -1,8 +1,8 @@
 import { describe, test } from "node:test";
 import * as assert from "node:assert/strict";
-import type { StageCell } from "../src/deployLocation";
-import type { DeployPr } from "../src/deployService";
-import { matchesWhere, summarize, whereOf } from "../src/deploySummary";
+import type { StageCell } from "../src/core/deployLocation";
+import type { DeployPr } from "../src/core/deployService";
+import { matchesWhere, summarize, whereOf } from "../src/core/deploySummary";
 
 const cell = (name: string, state: StageCell["state"], firstAt?: string): StageCell => ({ name, state, firstAt, by: firstAt ? "ann" : undefined });
 
@@ -16,7 +16,6 @@ const pr = (over: Partial<DeployPr> = {}): DeployPr => ({
   state: "MERGED",
   isDraft: false,
   createdAt: "c",
-  updatedAt: "u",
   inBranch: true,
   tracks: [],
   ...over,

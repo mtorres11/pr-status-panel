@@ -7,7 +7,7 @@ import type { KeyValueStore } from "./ports";
 import { asRecord, isLogin, isRepo, oneOf, pickValid } from "./validate";
 
 /** A choice in a dropdown: the stored value and its label. */
-export type Option<T> = readonly [T, string];
+type Option<T> = readonly [T, string];
 
 const SHOW_OPTIONS = [
   ["authored", "Authored"],
@@ -22,7 +22,7 @@ const SORT_OPTIONS = [
 ] as const;
 
 export type ShowMode = (typeof SHOW_OPTIONS)[number][0];
-export type SortMode = (typeof SORT_OPTIONS)[number][0];
+type SortMode = (typeof SORT_OPTIONS)[number][0];
 
 const values = <T>(options: readonly Option<T>[]): T[] => options.map(([v]) => v);
 

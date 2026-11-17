@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import * as assert from "node:assert/strict";
-import { PipelineReader } from "../src/pipelines";
+import { PipelineReader } from "../src/core/pipelines";
 
 const CFG = { cliPath: "aws", profile: "dev", region: "us-east-1" };
 const SHA1 = "1".repeat(40);

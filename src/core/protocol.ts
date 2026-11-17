@@ -27,14 +27,14 @@ export type WebviewMessage =
   | { type: "awsProfile" }
   | { type: "awsSignIn" };
 
-export type MessageType = WebviewMessage["type"];
-export type MessageOf<K extends MessageType> = Extract<WebviewMessage, { type: K }>;
+type MessageType = WebviewMessage["type"];
+type MessageOf<K extends MessageType> = Extract<WebviewMessage, { type: K }>;
 
 /** One handler per webview message type. */
 export type MessageHandlers = { [K in MessageType]: (m: MessageOf<K>) => unknown };
 
 /** A GitHub account the user can switch to. */
-export interface AccountChoice {
+interface AccountChoice {
   key: string;
   label: string;
 }

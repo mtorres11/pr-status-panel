@@ -1,9 +1,9 @@
 import { describe, test } from "node:test";
 import * as assert from "node:assert/strict";
-import { readConfig } from "../src/config";
-import { DEFAULT_DEPLOY_UI } from "../src/deployFilters";
-import { DeployRequest, DeployResult, DeployService } from "../src/deployService";
-import { DeployTab } from "../src/deployTab";
+import { readConfig } from "../src/core/config";
+import { DEFAULT_DEPLOY_UI } from "../src/core/deployFilters";
+import { DeployRequest, DeployResult, DeployService } from "../src/core/deployService";
+import { DeployTab } from "../src/core/deployTab";
 import { fakeSettings, fakeUi } from "./fakes";
 
 const API = { restBase: "r", graphqlUrl: "g", token: "t" };

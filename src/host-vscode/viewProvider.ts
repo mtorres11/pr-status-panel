@@ -3,7 +3,8 @@
 
 import { randomBytes } from "crypto";
 import * as vscode from "vscode";
-import type { Panel } from "./panel";
+import type { Panel } from "../core/panel";
+import { CFG } from "./vscodeAdapters";
 
 /** Webview scripts in load order: shared helpers and the bridge first, the page last. */
 const SCRIPTS = ["dom.js", "bridge.js", "prCard.js", "deploy.js", "main.js"];
@@ -20,7 +21,7 @@ export class PrStatusViewProvider implements vscode.WebviewViewProvider, vscode.
     this.disposables.push(
       vscode.authentication.onDidChangeSessions(() => void panel.refreshActive(true)),
       vscode.workspace.onDidChangeConfiguration((e) => {
-        if (e.affectsConfiguration("prStatus") && panel.settingsChanged()) this.schedule();
+        if (e.affectsConfiguration(CFG) && panel.settingsChanged()) this.schedule();
       }),
       vscode.window.onDidChangeWindowState((s) => {
         if (s.focused) panel.refreshIfStale();

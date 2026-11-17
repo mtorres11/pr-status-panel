@@ -14,7 +14,7 @@ import type { PrUi } from "./uiState";
 const REPOS_TTL_MS = 30 * 60_000;
 const APPROVALS_TTL_MS = 60 * 60_000;
 
-export interface PrTabDeps {
+interface PrTabDeps {
   client: PrClient;
   auth: GitHubAuth;
   config: () => PanelConfig;
@@ -25,7 +25,7 @@ export interface PrTabDeps {
 }
 
 /** The PR tab's part of the payload. */
-export interface PrTabView {
+interface PrTabView {
   prs: PrView[];
   loading: boolean;
   error?: string;

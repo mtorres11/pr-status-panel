@@ -1,9 +1,9 @@
 // Builders for test data: a raw GitHub PR and a PR view with sensible defaults.
 
-import type { DeployRawPr } from "../src/deployGithub";
-import type { RawPullRequest } from "../src/githubPrs";
-import { copyGroupsOf } from "../src/copy";
-import type { PrView } from "../src/model";
+import type { DeployRawPr } from "../src/core/deployGithub";
+import type { RawPullRequest } from "../src/core/githubPrs";
+import { copyGroupsOf } from "../src/core/copy";
+import type { PrView } from "../src/core/model";
 
 type Rollup = NonNullable<RawPullRequest["commits"]["nodes"][number]["commit"]["statusCheckRollup"]>;
 type Context = Rollup["contexts"]["nodes"][number];
@@ -89,8 +89,6 @@ export function deployRaw(over: Partial<DeployRawPr> = {}): DeployRawPr {
     mergeCommit: { oid: "m".repeat(40) },
     headRefName: "feature",
     headRefOid: "h".repeat(40),
-    baseRefName: "main",
-    reviewDecision: null,
     repository: { nameWithOwner: "o/r" },
     author: { login: "me" },
     mergedBy: { login: "ann" },

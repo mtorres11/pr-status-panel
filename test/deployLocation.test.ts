@@ -1,8 +1,8 @@
 import { describe, test } from "node:test";
 import * as assert from "node:assert/strict";
-import type { BranchIndex } from "../src/deployGithub";
-import { containsFn, findRevert, trackFor } from "../src/deployLocation";
-import type { PipelineHistory } from "../src/pipelines";
+import type { BranchIndex } from "../src/core/deployGithub";
+import { containsFn, findRevert, trackFor } from "../src/core/deployLocation";
+import type { PipelineHistory } from "../src/core/pipelines";
 
 /** Commits c0 (oldest) … c9: `sha` is in `ref` when its number is not larger. */
 function linear() {

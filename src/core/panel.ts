@@ -18,7 +18,7 @@ import { isLogin } from "./validate";
 /** UI keys that only change how the list is drawn. */
 const DISPLAY_ONLY = ["copyGroup", "copyFormat", ...DISPLAY_ONLY_KEYS];
 
-export interface PanelDeps {
+interface PanelDeps {
   ui: HostUi;
   settings: Settings;
   auth: Auth;

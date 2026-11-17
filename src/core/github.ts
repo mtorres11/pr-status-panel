@@ -34,8 +34,6 @@ export function apiTargetFor(
   };
 }
 
-export class GitHubError extends Error {}
-
 /** Headers for every call: the token, and the client name GitHub asks for. */
 function headers(api: ApiTarget, extra: Record<string, string>): Record<string, string> {
   return { Authorization: `Bearer ${api.token}`, "User-Agent": "pr-status-panel", ...extra };
@@ -55,14 +53,14 @@ export async function graphql<T>(
     body: JSON.stringify({ query, variables }),
   });
   if (!res.ok) {
-    throw new GitHubError(`GitHub GraphQL ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    throw new Error(`GitHub GraphQL ${res.status}: ${(await res.text()).slice(0, 200)}`);
   }
   const body = (await res.json()) as {
     data?: T;
     errors?: { message: string }[];
   };
   if (body.errors?.length && (strict || !body.data)) {
-    throw new GitHubError(body.errors.map((e) => e.message).join("; "));
+    throw new Error(body.errors.map((e) => e.message).join("; "));
   }
   return body.data as T;
 }
@@ -80,12 +78,12 @@ async function request(
   });
 }
 
-/** POST to a REST path; throws a GitHubError with GitHub's message (or the status code) when it fails. */
+/** POST to a REST path; throws with GitHub's message (or the status code) when it fails. */
 export async function restPost(api: ApiTarget, path: string): Promise<void> {
   const res = await request(api, path, "POST");
   if (res.ok) return;
   const body = (await res.json().catch(() => ({}))) as { message?: string };
-  throw new GitHubError(body.message ?? `${res.status}`);
+  throw new Error(body.message ?? `${res.status}`);
 }
 
 /** GET a REST path as JSON; undefined when GitHub answers with an error status. */

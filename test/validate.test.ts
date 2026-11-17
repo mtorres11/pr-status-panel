@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import * as assert from "node:assert/strict";
-import { isHttpsUrl, isLogin, isRepo, logins, repoPath, repos, safeRegex } from "../src/validate";
+import { isHttpsUrl, isLogin, isRepo, logins, repoPath, repos, safeRegex } from "../src/core/validate";
 
 describe("validate", () => {
   test("isLogin", () => {

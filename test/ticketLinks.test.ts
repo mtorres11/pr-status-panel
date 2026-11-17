@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import * as assert from "node:assert/strict";
-import { jiraOrigin, parsePrRef, ticketKeyIn, ticketsOf, ticketUrl } from "../src/ticketLinks";
+import { jiraOrigin, parsePrRef, ticketKeyIn, ticketsOf, ticketUrl } from "../src/core/ticketLinks";
 
 describe("parsePrRef", () => {
   test("PR links and owner/repo#n", () => {

@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, mock, test } from "node:test";
 import * as assert from "node:assert/strict";
-import { AwsError } from "../src/awsCli";
-import type { BranchIndex } from "../src/deployGithub";
-import { DEFAULT_DEPLOY_UI } from "../src/deployFilters";
-import { DeployRequest, DeployService, DeployServiceDeps } from "../src/deployService";
-import type { PipelineHistory } from "../src/pipelines";
+import { AwsError } from "../src/core/awsCli";
+import type { BranchIndex } from "../src/core/deployGithub";
+import { DEFAULT_DEPLOY_UI } from "../src/core/deployFilters";
+import { DeployRequest, DeployService, DeployServiceDeps } from "../src/core/deployService";
+import type { PipelineHistory } from "../src/core/pipelines";
 import { deployRaw } from "./helpers";
 
 const API = { restBase: "r", graphqlUrl: "g", token: "t" };

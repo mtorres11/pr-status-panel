@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import * as assert from "node:assert/strict";
-import { accountKey, GitHubAuth } from "../src/githubAuth";
-import { UiStateStore } from "../src/uiState";
+import { accountKey, GitHubAuth } from "../src/core/githubAuth";
+import { UiStateStore } from "../src/core/uiState";
 import { fakeAuth, fakeUi, memoryStore } from "./fakes";
 
 const ANN = { id: "1", label: "ann" };

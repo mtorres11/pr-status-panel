@@ -1,9 +1,9 @@
 // @ts-check
 // The panel page: tabs, the PR tab's controls, list and "Copy links", and the footer. Loaded last.
 (function () {
-  /** @typedef {import('../src/protocol').Payload} Payload */
-  /** @typedef {import('../src/model').PrView} PrView */
-  /** @typedef {import('../src/copy').CopyGroup} CopyGroup */
+  /** @typedef {import('../src/core/protocol').Payload} Payload */
+  /** @typedef {import('../src/core/model').PrView} PrView */
+  /** @typedef {import('../src/core/copy').CopyGroup} CopyGroup */
 
   /** @type {any} */
   const ns = (/** @type {any} */ (window)).PrStatus;

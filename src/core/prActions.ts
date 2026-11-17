@@ -19,7 +19,7 @@ const COPIED_AS: Record<CopyFormat, string> = {
   markdown: " as a Markdown list",
 };
 
-export interface PrActionsDeps {
+interface PrActionsDeps {
   ui: HostUi;
   settings: Settings;
   client: PrClient;

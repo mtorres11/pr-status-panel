@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import * as assert from "node:assert/strict";
-import { mapLimit } from "../src/async";
+import { mapLimit } from "../src/core/async";
 
 test("mapLimit keeps order and never runs more than the limit at once", async () => {
   let running = 0;

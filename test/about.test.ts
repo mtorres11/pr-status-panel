@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import * as assert from "node:assert/strict";
-import { aboutFrom } from "../src/about";
+import { aboutFrom } from "../src/core/about";
 
 test("aboutFrom reads author, repository link and version", () => {
   assert.deepEqual(

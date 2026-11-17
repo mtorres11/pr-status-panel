@@ -1,8 +1,8 @@
 // Activation: builds the panel with the VS Code adapters and registers the view and commands.
 
 import * as vscode from "vscode";
-import { aboutFrom } from "./about";
-import { Panel } from "./panel";
+import { aboutFrom } from "../core/about";
+import { Panel } from "../core/panel";
 import { PrStatusViewProvider } from "./viewProvider";
 import { mementoStore, vscodeAuth, vscodeSettings, vscodeUi } from "./vscodeAdapters";
 

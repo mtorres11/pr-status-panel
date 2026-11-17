@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import * as assert from "node:assert/strict";
-import { COPY_GROUPS, copyText, inGroup } from "../src/copy";
+import { COPY_GROUPS, copyText, inGroup } from "../src/core/copy";
 import { view } from "./helpers";
 
 describe("inGroup", () => {

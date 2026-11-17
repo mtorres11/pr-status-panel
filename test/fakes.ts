@@ -1,7 +1,7 @@
 // In-memory stand-ins for the editor ports.
 
-import type { PrClient } from "../src/githubPrs";
-import type { Auth, AuthAccount, HostUi, KeyValueStore, SessionOptions, Settings } from "../src/ports";
+import type { PrClient } from "../src/core/githubPrs";
+import type { Auth, AuthAccount, HostUi, KeyValueStore, SessionOptions, Settings } from "../src/core/ports";
 
 /** Settings backed by two maps: effective values and user-level values ("section.key" outside prStatus). */
 export function fakeSettings(effective: Record<string, unknown> = {}, user: Record<string, unknown> = {}) {

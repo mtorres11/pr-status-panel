@@ -1,7 +1,7 @@
 // @ts-check
 // The only line to the extension: messages out, payload updates in. Nothing else calls acquireVsCodeApi.
 (function () {
-  /** @typedef {import('../src/protocol').Payload} Payload */
+  /** @typedef {import('../src/core/protocol').Payload} Payload */
 
   /** @type {any} */
   const ns = ((/** @type {any} */ (window)).PrStatus ??= {});

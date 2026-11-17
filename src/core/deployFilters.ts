@@ -83,7 +83,7 @@ export interface SearchContext {
 }
 
 /** What to fetch: one PR, a set of searches, or a hint about what is missing. */
-export type FetchPlan =
+type FetchPlan =
   | { pr: { repo: string; number: number } }
   | { queries: string[] }
   | { hint: string };

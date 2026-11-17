@@ -1,9 +1,9 @@
 import { describe, mock, test } from "node:test";
 import * as assert from "node:assert/strict";
-import type { DeployRequest, DeployService } from "../src/deployService";
-import type { PrClient } from "../src/githubPrs";
-import { Panel } from "../src/panel";
-import type { HostMessage, Payload } from "../src/protocol";
+import type { DeployRequest, DeployService } from "../src/core/deployService";
+import type { PrClient } from "../src/core/githubPrs";
+import { Panel } from "../src/core/panel";
+import type { HostMessage, Payload } from "../src/core/protocol";
 import { fakeAuth, fakeClient, fakeSettings, fakeUi, memoryStore } from "./fakes";
 import { rawPr } from "./helpers";
 

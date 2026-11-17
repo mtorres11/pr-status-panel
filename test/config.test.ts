@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import * as assert from "node:assert/strict";
-import { awsConfig, awsLoginCommand, fetchSnapshot, ignoredStages, pipelinePrefix, readConfig } from "../src/config";
+import { awsConfig, awsLoginCommand, fetchSnapshot, ignoredStages, pipelinePrefix, readConfig } from "../src/core/config";
 import { fakeSettings } from "./fakes";
 
 describe("readConfig", () => {

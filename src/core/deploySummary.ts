@@ -27,7 +27,7 @@ export interface DeployPrView extends DeployPr {
   shown: boolean;
 }
 
-export interface DeploySummary {
+interface DeploySummary {
   prs: DeployPrView[];
   /** Every stage name in the list, in pipeline order. */
   stageNames: string[];
@@ -39,7 +39,7 @@ function stageNamesOf(prs: DeployPr[]): string[] {
   return [...new Set(names)];
 }
 
-export function stageSummary(pr: DeployPr, name: string): StageSummary {
+function stageSummary(pr: DeployPr, name: string): StageSummary {
   const cells = pr.tracks.map((t) => t.stages.find((s) => s.name === name)).filter((c): c is StageCell => !!c);
   const done = cells
     .filter((c) => c.state === "deployed")

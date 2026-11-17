@@ -3,7 +3,7 @@ import * as assert from "node:assert/strict";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AwsError, codepipeline, listProfiles } from "../src/awsCli";
+import { AwsError, codepipeline, listProfiles } from "../src/core/awsCli";
 
 /** A stand-in AWS CLI whose behaviour is picked with FAKE_AWS_MODE. */
 const SCRIPT = `#!/usr/bin/env node

@@ -20,8 +20,6 @@ export interface DeployRawPr {
   mergeCommit: { oid: string } | null;
   headRefName: string;
   headRefOid: string;
-  baseRefName: string;
-  reviewDecision: string | null;
   repository: { nameWithOwner: string };
   author: { login: string } | null;
   mergedBy: { login: string } | null;
@@ -29,7 +27,7 @@ export interface DeployRawPr {
 
 const FIELDS = `... on PullRequest {
   id number title url isDraft state createdAt updatedAt mergedAt mergeCommit { oid }
-  headRefName headRefOid baseRefName reviewDecision
+  headRefName headRefOid
   repository { nameWithOwner } author { login } mergedBy { login }
 }`;
 

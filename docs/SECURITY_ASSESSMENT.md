@@ -18,11 +18,11 @@ and can re-run failed GitHub Actions jobs after explicit confirmation.
  ┌──────────────── VS Code ────────────────────────────────────────┐
  │                                                                 │
  │  Webview (panel UI)            Extension host (Node)            │
- │  media/main.js  ── postMessage ──▶  src/extension.ts            │
- │  · no network access             · validates every message      │
- │  · strict CSP, nonce script      · builds GitHub queries        │
- │  · DOM built with textContent    · src/github.ts (fetch, 20s    │
- │                                    timeout)                     │
+ │  media/bridge.js ─ postMessage ─▶ src/host-vscode (adapters)    │
+ │  · no network access             · src/core/protocol.ts parses  │
+ │  · strict CSP, nonce script        and validates every message  │
+ │  · DOM built with textContent    · src/core: queries, GitHub    │
+ │                                    calls (fetch, 20s timeout)   │
  │                                         │                       │
  │  VS Code GitHub sign-in ◀── getSession ─┘ (token in memory only)│
  └─────────────────────────────────────────┼───────────────────────┘
@@ -56,12 +56,12 @@ authentication; the extension never sees a password and never stores a token.
 | **Token sent to an attacker's server** | Token only sent to `api.github.com` or to the origin of the user-level `github-enterprise.uri` (https enforced; workspace values ignored). No custom API URL setting exists. |
 | **Malicious repository changes extension settings** (`.vscode/settings.json`) | Every `prStatus.*` setting is `application`-scoped (user level only), so workspace values are ignored. Enterprise URL read from `inspect().globalValue` only. |
 | **XSS in the panel from PR titles, branch names, check names** | Panel builds DOM with `textContent` / `createElement` only (no `innerHTML`). CSP: `default-src 'none'`, scripts only by nonce (`crypto.randomBytes`), styles only from the extension. No remote content is loaded. |
-| **Forged messages from the webview** | Every message is validated in the extension host: enum allow-lists, GitHub login and repo-name patterns, account keys must match a real signed-in account, unknown keys dropped. |
+| **Forged messages from the webview** | Every message is validated in the extension host: each message type has its own parser (`src/core/protocol.ts`) and unknown types are dropped; then enum allow-lists, GitHub login and repo-name patterns, account keys must match a real signed-in account, unknown keys dropped, and PR ids must match PRs the extension itself loaded. |
 | **Search-query or URL injection** | Logins and repos validated against GitHub's character rules before going into search queries; REST path segments URL-encoded; `.`/`..` repo names rejected; ticket keys URL-encoded. |
 | **Opening dangerous links** | `openExternal` only accepts `https:` URLs (blocks `http:`, `file:`, `javascript:`, `vscode:` and other schemes). |
 | **Accidental CI re-runs** | Buttons are disabled unless a check failed; a modal confirmation names the repo, PR and number of runs; re-runs use the PR's own workflow run IDs from GitHub. |
 | **Regex denial of service** (user-configured `ticketPattern`, `ignoredChecks`) | Invalid regexes are ignored; text fed to them is capped at 256 characters; patterns can only come from the user's own settings. |
-| **Hung network calls** | All requests time out after 20 s; overlapping refreshes are cancelled by a generation counter. |
+| **Hung network calls** | All requests time out after 20 s; when refreshes overlap, only the newest one's result is kept. |
 | **Rate-limit abuse** | Refresh ≥ 15 s (default 60 s), paused when VS Code is unfocused or the panel hidden; search capped at 4 pages; branch rules cached 1 h, repo list 30 min. |
 
 ## 4. Findings fixed during this assessment
@@ -70,7 +70,7 @@ authentication; the extension never sees a password and never stores a token.
 |---|---|---|---|
 | S1 | High | A workspace setting (`prStatus.enterpriseUri`) could point API calls, and a GitHub Enterprise token, at any host, including over `http`. | Setting removed; host taken only from the user-level `github-enterprise.uri`, https enforced, origin only. |
 | S2 | Medium | Settings (Jira link target, regex patterns) could be set by a cloned repository. | All settings `application`-scoped. |
-| S3 | Medium | Webview messages were not validated. | Strict allow-list validation (`src/validate.ts`). |
+| S3 | Medium | Webview messages were not validated. | Strict allow-list validation (`src/core/validate.ts`, `src/core/protocol.ts`). |
 | S4 | Low | `http://` links could be opened. | https only. |
 | S5 | Low | CSP nonce used `Math.random`. | `crypto.randomBytes`. |
 | S6 | Low | Ticket keys and repo names were not URL-encoded. | Encoded; dot-segment repo names rejected. |
@@ -116,5 +116,6 @@ authentication; the extension never sees a password and never stores a token.
 npm ci --ignore-scripts
 npm audit
 npx tsc -p ./
+npm run test:coverage
 npm run package && unzip -l pr-status-panel.vsix
 ```

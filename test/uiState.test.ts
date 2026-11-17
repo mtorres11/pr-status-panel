@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import * as assert from "node:assert/strict";
-import { DEFAULT_UI, storedUi, validPatch } from "../src/uiState";
+import { DEFAULT_UI, storedUi, validPatch } from "../src/core/uiState";
 
 describe("validPatch", () => {
   test("keeps valid PR and Deployments keys", () => {
