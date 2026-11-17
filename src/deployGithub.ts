@@ -1,10 +1,10 @@
 // GitHub reads for the Deployments tab: a light PR search, a single PR, and a branch's commit list used
 // to answer "is commit X already in branch Y?" without one API call per question.
 
-import { ApiTarget, graphql } from "./github";
-import { repoPath } from "./validate";
+import { ApiTarget, graphql, rest, searchPrs } from "./github";
+import { TtlCache } from "./ttlCache";
+import { repoPath, SHA_RE } from "./validate";
 
-const REQUEST_TIMEOUT_MS = 20_000;
 const BRANCH_TTL_MS = 3 * 60_000;
 
 export interface DeployRawPr {
@@ -33,40 +33,12 @@ const FIELDS = `... on PullRequest {
   repository { nameWithOwner } author { login } mergedBy { login }
 }`;
 
-const SEARCH = `query($q: String!, $cursor: String) {
-  search(query: $q, type: ISSUE, first: 50, after: $cursor) {
-    pageInfo { hasNextPage endCursor }
-    nodes { ${FIELDS} }
-  }
-}`;
-
 const ONE = `query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) { pullRequest(number: $number) { ${FIELDS} } }
 }`;
 
-type SearchPage = {
-  search: {
-    pageInfo: { hasNextPage: boolean; endCursor: string | null };
-    nodes: (DeployRawPr | Record<string, never>)[];
-  };
-};
-
-export async function searchDeployPrs(
-  api: ApiTarget,
-  q: string,
-  maxPages = 2,
-): Promise<DeployRawPr[]> {
-  const out: DeployRawPr[] = [];
-  let cursor: string | null = null;
-  for (let page = 0; page < maxPages; page++) {
-    const data: SearchPage = await graphql(api, SEARCH, { q, cursor });
-    out.push(
-      ...data.search.nodes.filter((n): n is DeployRawPr => !!n && "id" in n),
-    );
-    if (!data.search.pageInfo.hasNextPage) break;
-    cursor = data.search.pageInfo.endCursor;
-  }
-  return out;
+export function searchDeployPrs(api: ApiTarget, q: string): Promise<DeployRawPr[]> {
+  return searchPrs<DeployRawPr>(api, FIELDS, q, 2);
 }
 
 export async function getDeployPr(
@@ -80,18 +52,6 @@ export async function getDeployPr(
   return data?.repository?.pullRequest ?? undefined;
 }
 
-async function rest<T>(api: ApiTarget, path: string): Promise<T | undefined> {
-  const res = await fetch(`${api.restBase}${path}`, {
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    headers: {
-      Authorization: `Bearer ${api.token}`,
-      Accept: "application/vnd.github+json",
-      "User-Agent": "pr-status-panel",
-    },
-  });
-  return res.ok ? ((await res.json()) as T) : undefined;
-}
-
 /** A branch's recent history: position of each commit (0 = newest) and the first line of its message. */
 export interface BranchIndex {
   branch: string;
@@ -101,52 +61,41 @@ export interface BranchIndex {
   commits: { sha: string; message: string; date: string }[];
 }
 
+type RestCommit = { sha: string; commit: { message: string; committer?: { date?: string } } };
+
+/** Commits on `branch` since `since` (up to 1000), newest first, or undefined when there are none. */
+async function loadIndex(
+  api: ApiTarget,
+  repo: string,
+  branch: string,
+  since: string,
+): Promise<BranchIndex | undefined> {
+  const commits: BranchIndex["commits"] = [];
+  for (let page = 1; page <= 10; page++) {
+    const q = `sha=${encodeURIComponent(branch)}&since=${encodeURIComponent(since)}&per_page=100&page=${page}`;
+    const batch = await rest<RestCommit[]>(api, `/repos/${repoPath(repo)}/commits?${q}`);
+    if (!batch) break;
+    commits.push(
+      ...batch.map((c) => ({
+        sha: c.sha,
+        message: c.commit.message.split("\n")[0],
+        date: c.commit.committer?.date ?? "",
+      })),
+    );
+    if (batch.length < 100) break;
+  }
+  if (!commits.length) return undefined;
+  return { branch, since, position: new Map(commits.map((c, i) => [c.sha, i])), commits };
+}
+
 export class BranchCommits {
-  private cache = new Map<
-    string,
-    { at: number; value: BranchIndex | undefined }
-  >();
-  private contains = new Map<string, boolean>();
+  private readonly indexes = new TtlCache<BranchIndex | undefined>(BRANCH_TTL_MS);
+  /** Answers for commit pairs, which never change. */
+  private readonly contains = new TtlCache<boolean>(Infinity);
 
   /** Commits on `branch` since `since` (up to 1000), or undefined when the branch does not exist. */
-  async index(
-    api: ApiTarget,
-    repo: string,
-    branch: string,
-    since: string,
-  ): Promise<BranchIndex | undefined> {
-    const key = `${repo}@${branch}@${since.slice(0, 10)}`;
-    const cached = this.cache.get(key);
-    if (cached && Date.now() - cached.at < BRANCH_TTL_MS) return cached.value;
-    const commits: BranchIndex["commits"] = [];
-    for (let page = 1; page <= 10; page++) {
-      const q = `sha=${encodeURIComponent(branch)}&since=${encodeURIComponent(since)}&per_page=100&page=${page}`;
-      const batch = await rest<
-        {
-          sha: string;
-          commit: { message: string; committer?: { date?: string } };
-        }[]
-      >(api, `/repos/${repoPath(repo)}/commits?${q}`);
-      if (!batch) break;
-      commits.push(
-        ...batch.map((c) => ({
-          sha: c.sha,
-          message: c.commit.message.split("\n")[0],
-          date: c.commit.committer?.date ?? "",
-        })),
-      );
-      if (batch.length < 100) break;
-    }
-    const value = commits.length
-      ? {
-          branch,
-          since,
-          position: new Map(commits.map((c, i) => [c.sha, i])),
-          commits,
-        }
-      : undefined;
-    this.cache.set(key, { at: Date.now(), value });
-    return value;
+  index(api: ApiTarget, repo: string, branch: string, since: string): Promise<BranchIndex | undefined> {
+    return this.indexes.get(`${repo}@${branch}@${since.slice(0, 10)}`, () => loadIndex(api, repo, branch, since));
   }
 
   /** `sha` is part of `ref` (a branch or commit). Uses the index when both are in it, else one compare call. */
@@ -161,14 +110,15 @@ export class BranchCommits {
     const b = idx?.position.get(ref) ?? (ref === idx?.branch ? 0 : undefined);
     if (a !== undefined && b !== undefined) return b <= a;
     const key = `${repo}:${sha}:${ref}`;
-    if (this.contains.has(key)) return this.contains.get(key);
+    const known = this.contains.peek(key);
+    if (known !== undefined) return known;
     const cmp = await rest<{ status?: string }>(
       api,
       `/repos/${repoPath(repo)}/compare/${encodeURIComponent(sha)}...${encodeURIComponent(ref)}`,
     );
     if (!cmp?.status) return undefined;
     const yes = cmp.status === "ahead" || cmp.status === "identical";
-    if (/^[0-9a-f]{40}$/i.test(ref)) this.contains.set(key, yes); // only commit pairs never change
+    if (SHA_RE.test(ref)) this.contains.set(key, yes); // only commit pairs never change
     return yes;
   }
 }

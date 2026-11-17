@@ -6,6 +6,9 @@ const LOGIN_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 /** owner/name with GitHub's allowed characters. */
 const REPO_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
 
+/** A full git commit id. */
+export const SHA_RE = /^[0-9a-f]{40}$/i;
+
 /** Max length of text fed to user-configured regexes (limits catastrophic backtracking). */
 export const MAX_REGEX_INPUT = 256;
 
@@ -40,4 +43,13 @@ export function isHttpsUrl(v: unknown): v is string {
 /** Encodes "owner/name" for use in a REST path. */
 export function repoPath(repo: string): string {
   return repo.split("/").map(encodeURIComponent).join("/");
+}
+
+/** A RegExp from user text, or undefined when the text is not a valid pattern. */
+export function safeRegex(src: string, flags = ""): RegExp | undefined {
+  try {
+    return new RegExp(src, flags);
+  } catch {
+    return undefined;
+  }
 }

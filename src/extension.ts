@@ -13,16 +13,18 @@ import {
   updatePullRequestBranch,
 } from "./github";
 import { COPY_FORMATS, COPY_GROUPS, CopyFormat, CopyGroup, copyText, inGroup } from "./copy";
-import { jiraOrigin, PrView, toView } from "./model";
+import { PrView, toView } from "./model";
+import { jiraOrigin, ticketUrl } from "./ticketLinks";
 import { isHttpsUrl, isLogin, isRepo, logins, repos } from "./validate";
 import { DEFAULT_DEPLOY_UI, deployPatch, DeployUi, DISPLAY_ONLY_KEYS } from "./deployFilters";
 import { DeployPanel } from "./deployPanel";
+import { TtlCache } from "./ttlCache";
+import { CFG, userSetting } from "./userSettings";
 
 const SHOW_MODES = ["authored", "review", "assigned", "all"] as const;
 const SORT_MODES = ["attention", "updated", "ticket"] as const;
 
 const SCOPES = ["repo", "read:org"];
-const CFG = "prStatus";
 
 type ShowMode = "authored" | "review" | "assigned" | "all";
 type SortMode = "attention" | "updated" | "ticket";
@@ -84,16 +86,11 @@ export function deactivate(): void {
 }
 
 /**
- * GitHub Enterprise Server URL, read ONLY from the user-level value of VS Code's
- * own "github-enterprise.uri" setting (the server VS Code's GitHub Enterprise
- * sign-in uses). Workspace/folder values are ignored on purpose, so a cloned
- * repository's .vscode/settings.json can never redirect the token elsewhere.
- * Returns "" unless it is a valid https URL.
+ * GitHub Enterprise Server URL from VS Code's own "github-enterprise.uri" setting (the server VS Code's GitHub
+ * Enterprise sign-in uses), user level only so a workspace can never redirect the token. "" unless https.
  */
 function enterpriseUri(): string {
-  const v = vscode.workspace
-    .getConfiguration("github-enterprise")
-    .inspect<string>("uri")?.globalValue;
+  const v = userSetting<unknown>("uri", undefined, "github-enterprise");
   return isHttpsUrl(v) ? v : "";
 }
 
@@ -112,11 +109,8 @@ class PrStatusViewProvider
   private prs: PrView[] = [];
   private accounts: AccountOption[] = [];
   private viewerLogin?: string;
-  private repoCache = new Map<string, { at: number; repos: string[] }>();
-  private approvalsCache = new Map<
-    string,
-    { at: number; value: number | undefined }
-  >();
+  private readonly repoCache = new TtlCache<string[]>(30 * 60_000);
+  private readonly approvalsCache = new TtlCache<number | undefined>(3_600_000);
 
   readonly deploy: DeployPanel;
 
@@ -286,10 +280,8 @@ class PrStatusViewProvider
           .getConfiguration(CFG)
           .update("jiraBaseUrl", origin, vscode.ConfigurationTarget.Global);
         const ticket = String(m.ticket ?? "");
-        if (/^[A-Za-z0-9_-]{1,64}$/.test(ticket))
-          vscode.env.openExternal(
-            vscode.Uri.parse(`${origin}/browse/${encodeURIComponent(ticket)}`),
-          );
+        const url = ticketUrl(origin, ticket);
+        if (url && /^[A-Za-z0-9_-]{1,64}$/.test(ticket)) vscode.env.openExternal(vscode.Uri.parse(url));
         break;
       }
       case "open": {
@@ -784,35 +776,25 @@ class PrStatusViewProvider
     const repo = pr.repository.nameWithOwner;
     if (cfg.requiredApprovalsPerRepo[repo] !== undefined)
       return cfg.requiredApprovalsPerRepo[repo];
-    const key = `${repo}@${pr.baseRefName}`;
-    let cached = this.approvalsCache.get(key);
-    if (!cached || Date.now() - cached.at > 3_600_000) {
-      cached = {
-        at: Date.now(),
-        value: await getRulesetRequiredApprovals(api, repo, pr.baseRefName),
-      };
-      this.approvalsCache.set(key, cached);
-    }
+    const fromRules = await this.approvalsCache.get(`${repo}@${pr.baseRefName}`, () =>
+      getRulesetRequiredApprovals(api, repo, pr.baseRefName),
+    );
     return (
-      cached.value ??
+      fromRules ??
       pr.baseRef?.branchProtectionRule?.requiredApprovingReviewCount ??
       cfg.requiredApprovals
     );
   }
 
   private repoListFor(key: string): string[] {
-    return this.repoCache.get(key)?.repos ?? [];
+    return this.repoCache.peek(key) ?? [];
   }
 
   private async repos(api: ApiTarget, key: string): Promise<string[]> {
-    const cached = this.repoCache.get(key);
-    if (cached && Date.now() - cached.at < 30 * 60_000) return cached.repos;
     try {
-      const repos = await listViewerRepos(api);
-      this.repoCache.set(key, { at: Date.now(), repos });
-      return repos;
+      return await this.repoCache.get(key, () => listViewerRepos(api));
     } catch {
-      return cached?.repos ?? [];
+      return this.repoCache.peek(key) ?? [];
     }
   }
 

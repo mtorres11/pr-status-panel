@@ -19,9 +19,8 @@ import {
   trackFor,
 } from "./deployLocation";
 import type { ApiTarget } from "./github";
-import { jiraOrigin } from "./model";
 import { PipelineHistory, PipelineReader } from "./pipelines";
-import { ticketsOf } from "./ticketLinks";
+import { ticketsOf, ticketUrl } from "./ticketLinks";
 
 const MAX_PRS = 100;
 const DAY = 86_400_000;
@@ -189,7 +188,6 @@ export class DeployService {
   ): Promise<DeployPr> {
     const repo = r.repository.nameWithOwner;
     const ticket = ticketsOf(r, req.ticketPattern)[0];
-    const jira = jiraOrigin(req.jiraBaseUrl);
     const base: DeployPr = {
       id: r.id,
       repo,
@@ -205,10 +203,7 @@ export class DeployService {
       mergedAt: r.mergedAt ?? undefined,
       reviewDecision: r.reviewDecision ?? undefined,
       ticket,
-      ticketUrl:
-        ticket && jira
-          ? `${jira}/browse/${encodeURIComponent(ticket)}`
-          : undefined,
+      ticketUrl: ticketUrl(req.jiraBaseUrl, ticket),
       tracks: [],
     };
     const sha = r.mergeCommit?.oid;

@@ -1,7 +1,7 @@
 // Pure CodePipeline history logic: which commit each run built, which stage runs succeeded, who approved.
 // No AWS calls here.
 
-export const SHA_RE = /^[0-9a-f]{40}$/i;
+import { SHA_RE } from "./validate";
 
 /** One successful run of a stage. */
 export interface StageRun {
@@ -50,13 +50,27 @@ export function personFromArn(arn: string | undefined): string | undefined {
   return last.split("@")[0].slice(0, 60) || undefined;
 }
 
-/** Commit each pipeline run built from: the repo checkout's revision (not shared-workflow sources). */
+/**
+ * The commit a pipeline run built from, given its source revisions and how each one is labelled (action or
+ * artifact name): the repo checkout, never a shared-workflow source. Lower-cased; undefined without a commit.
+ */
+export function mainRevision<T extends { revisionId?: string }>(
+  revisions: T[],
+  label: (r: T) => string | undefined,
+): string | undefined {
+  const commits = revisions.filter((r) => SHA_RE.test(r.revisionId ?? ""));
+  const own = commits.filter((r) => !/shared/i.test(label(r) ?? ""));
+  const candidates = own.length ? own : commits;
+  const main = candidates.find((r) => /source|checkout/i.test(label(r) ?? "")) ?? candidates[0];
+  return main?.revisionId?.toLowerCase();
+}
+
+/** Commit each pipeline run built from (see mainRevision). */
 export function commitsByExecution(execs: ExecutionSummary[]): Map<string, string> {
   const out = new Map<string, string>();
   for (const e of execs) {
-    const revs = (e.sourceRevisions ?? []).filter((r) => SHA_RE.test(r.revisionId ?? ""));
-    const main = revs.find((r) => /source-checkout|^source$/i.test(r.actionName ?? "")) ?? revs[0];
-    if (main?.revisionId) out.set(e.pipelineExecutionId, main.revisionId.toLowerCase());
+    const sha = mainRevision(e.sourceRevisions ?? [], (r) => r.actionName);
+    if (sha) out.set(e.pipelineExecutionId, sha);
   }
   return out;
 }

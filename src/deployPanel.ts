@@ -6,6 +6,8 @@ import { AwsConfig, listProfiles } from "./awsCli";
 import { DeployUi } from "./deployFilters";
 import { AwsStatus, DeployPr, DeployService } from "./deployService";
 import type { ApiTarget } from "./github";
+import { CFG, userSetting } from "./userSettings";
+import { safeRegex } from "./validate";
 
 export interface DeployHost {
   /** Signed-in GitHub API and login, or undefined when signed out. */
@@ -28,22 +30,6 @@ interface DeployState {
   hint?: string;
   aws: AwsStatus;
   updatedAt?: number;
-}
-
-/** AWS settings, read ONLY from user-level values: they decide which program runs and which account is used. */
-function userSetting<T>(key: string, fallback: T): T {
-  const v = vscode.workspace
-    .getConfiguration("prStatus")
-    .inspect<T>(key)?.globalValue;
-  return v === undefined || v === null ? fallback : v;
-}
-
-function regex(src: string): RegExp | undefined {
-  try {
-    return src ? new RegExp(src, "i") : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 export class DeployPanel {
@@ -99,6 +85,11 @@ export class DeployPanel {
       : `${repo.split("/")[1]}-`;
   }
 
+  private ignoreStages(): RegExp | undefined {
+    const src = String(userSetting("aws.ignoreStages", "^source$"));
+    return src ? safeRegex(src, "i") : undefined;
+  }
+
   async refresh(): Promise<void> {
     const gen = ++this.generation;
     this.state.loading = true;
@@ -137,7 +128,7 @@ export class DeployPanel {
       jiraBaseUrl: s.jiraBaseUrl,
       aws: this.awsConfig(),
       pipelinePrefix: (repo) => this.pipelinePrefix(repo),
-      ignoreStages: regex(String(userSetting("aws.ignoreStages", "^source$"))),
+      ignoreStages: this.ignoreStages(),
     });
     return { ...result, error: undefined, updatedAt: Date.now() };
   }
@@ -166,7 +157,7 @@ export class DeployPanel {
     });
     if (!pick) return;
     await vscode.workspace
-      .getConfiguration("prStatus")
+      .getConfiguration(CFG)
       .update("aws.profile", pick, vscode.ConfigurationTarget.Global);
   }
 

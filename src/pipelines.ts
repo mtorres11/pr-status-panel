@@ -7,11 +7,12 @@ import {
   commitsByExecution,
   ExecutionSummary,
   ignoreAll,
+  mainRevision,
   PipelineHistory,
-  SHA_RE,
   StageState,
   stageRuns,
 } from "./pipelineRuns";
+import { TtlCache } from "./ttlCache";
 
 export type { PipelineHistory, StageHistory, StageRun } from "./pipelineRuns";
 
@@ -27,9 +28,8 @@ async function fetchRun(cfg: AwsConfig, pipeline: string, id: string): Promise<{
       "get-pipeline-execution", ...name, "--pipeline-execution-id", id,
     ]),
   ]);
-  const revs = (exec.pipelineExecution?.artifactRevisions ?? []).filter((r) => SHA_RE.test(r.revisionId ?? ""));
-  const main = revs.find((r) => /source|checkout/i.test(r.name ?? "") && !/shared/i.test(r.name ?? "")) ?? revs[0];
-  return { id, sha: main?.revisionId?.toLowerCase(), actions: acts.actionExecutionDetails ?? [] };
+  const sha = mainRevision(exec.pipelineExecution?.artifactRevisions ?? [], (r) => r.name);
+  return { id, sha, actions: acts.actionExecutionDetails ?? [] };
 }
 
 interface RunData {
@@ -50,20 +50,12 @@ async function addLatestRuns(cfg: AwsConfig, pipeline: string, data: RunData, ig
 }
 
 export class PipelineReader {
-  private cache = new Map<string, { at: number; value: unknown }>();
-
-  /** Memoizes `load` under `key` for `ttl` milliseconds. */
-  private async cached<T>(key: string, ttl: number, load: () => Promise<T>): Promise<T> {
-    const hit = this.cache.get(key);
-    if (hit && Date.now() - hit.at < ttl) return hit.value as T;
-    const value = await load();
-    this.cache.set(key, { at: Date.now(), value });
-    return value;
-  }
+  private readonly lists = new TtlCache<string[]>(LIST_TTL_MS);
+  private readonly histories = new TtlCache<PipelineHistory>(HISTORY_TTL_MS);
 
   /** Pipelines whose name starts with `prefix`. */
   pipelines(cfg: AwsConfig, prefix: string): Promise<string[]> {
-    return this.cached(`list|${cfg.profile}|${cfg.region}|${prefix}`, LIST_TTL_MS, async () => {
+    return this.lists.get(`${cfg.profile}|${cfg.region}|${prefix}`, async () => {
       const res = await codepipeline<{ pipelines?: { name: string }[] }>(cfg, ["list-pipelines"]);
       return (res.pipelines ?? []).map((p) => p.name).filter((n) => n.startsWith(prefix)).sort();
     });
@@ -71,7 +63,7 @@ export class PipelineReader {
 
   /** Stages (in pipeline order, minus ignored ones) with their successful runs. */
   history(cfg: AwsConfig, pipeline: string, ignore: RegExp | undefined): Promise<PipelineHistory> {
-    return this.cached(`history|${cfg.profile}|${cfg.region}|${pipeline}|${ignore?.source ?? ""}`, HISTORY_TTL_MS, async () => {
+    return this.histories.get(`${cfg.profile}|${cfg.region}|${pipeline}|${ignore?.source ?? ""}`, async () => {
       const name = ["--pipeline-name", pipeline];
       const [state, execs, actions] = await Promise.all([
         codepipeline<{ stageStates?: StageState[] }>(cfg, ["get-pipeline-state", "--name", pipeline]),

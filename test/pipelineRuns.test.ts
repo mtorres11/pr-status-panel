@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import * as assert from "node:assert/strict";
-import { ActionExecution, commitsByExecution, ignoreAll, personFromArn, stageRuns } from "../src/pipelineRuns";
+import { ActionExecution, commitsByExecution, ignoreAll, mainRevision, personFromArn, stageRuns } from "../src/pipelineRuns";
 
 const SHA_A = "a".repeat(40);
 const SHA_B = "B".repeat(40);
@@ -16,6 +16,26 @@ describe("commitsByExecution", () => {
       { pipelineExecutionId: "e5" },
     ]);
     assert.deepEqual([...m], [["e1", SHA_A], ["e2", SHA_B.toLowerCase()], ["e3", SHA_A]]);
+  });
+});
+
+describe("mainRevision", () => {
+  type Rev = { name?: string; revisionId?: string };
+  const byName = (r: Rev) => r.name;
+
+  test("prefers a source or checkout artifact that is not a shared workflow", () => {
+    const revs = [
+      { name: "SharedWorkflowsSource", revisionId: SHA_S },
+      { name: "Build", revisionId: SHA_B },
+      { name: "SourceArtifact", revisionId: SHA_A },
+    ];
+    assert.equal(mainRevision(revs, byName), SHA_A);
+  });
+
+  test("falls back to the first own commit, then to a shared one", () => {
+    assert.equal(mainRevision([{ name: "Shared", revisionId: SHA_S }, { name: "Build", revisionId: SHA_B }], byName), SHA_B.toLowerCase());
+    assert.equal(mainRevision([{ name: "shared-source", revisionId: SHA_S }], byName), SHA_S);
+    assert.equal(mainRevision<Rev>([{ revisionId: "v1" }, {}], byName), undefined);
   });
 });
 

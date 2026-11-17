@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import * as assert from "node:assert/strict";
-import { isHttpsUrl, isLogin, isRepo, logins, repoPath, repos } from "../src/validate";
+import { isHttpsUrl, isLogin, isRepo, logins, repoPath, repos, safeRegex } from "../src/validate";
 
 describe("validate", () => {
   test("isLogin", () => {
@@ -35,5 +35,13 @@ describe("validate", () => {
 
   test("repoPath encodes each part", () => {
     assert.equal(repoPath("o/r#1"), "o/r%231");
+  });
+});
+
+describe("safeRegex", () => {
+  test("compiles valid patterns with flags, rejects broken ones", () => {
+    assert.equal(safeRegex("^a$", "i")?.test("A"), true);
+    assert.equal(safeRegex("a")?.flags, "");
+    assert.equal(safeRegex("("), undefined);
   });
 });

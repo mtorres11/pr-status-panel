@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import * as assert from "node:assert/strict";
-import { jiraOrigin, ModelOptions, toView } from "../src/model";
+import { ModelOptions, toView } from "../src/model";
 import { rawPr, run, status } from "./helpers";
 
 const OPTS: ModelOptions = {
@@ -11,7 +11,9 @@ const OPTS: ModelOptions = {
 };
 
 describe("toView: ticket", () => {
-  test("takes the key from the branch first, then the title", () => {
+  test("takes the key from the branch first, then the title, upper-cased", () => {
+    const lower = { ...OPTS, ticketPattern: "[a-z]+-\\d+" };
+    assert.equal(toView(rawPr({ headRefName: "abc-1-x" }), 1, lower).ticket, "ABC-1");
     assert.equal(toView(rawPr({ headRefName: "ABC-1-x", title: "XYZ-9 t" }), 1, OPTS).ticket, "ABC-1");
     assert.equal(toView(rawPr({ headRefName: "feature", title: "XYZ-9 t" }), 1, OPTS).ticket, "XYZ-9");
   });
@@ -159,18 +161,5 @@ describe("toView: status", () => {
     assert.equal(v.headOid, "abc");
     assert.equal(v.author, "ghost");
     assert.equal(v.baseRef, "main");
-  });
-});
-
-describe("jiraOrigin", () => {
-  test("keeps only the site of any Jira link", () => {
-    assert.equal(jiraOrigin(" https://x.atlassian.net/browse/A-1 "), "https://x.atlassian.net");
-    assert.equal(jiraOrigin("x.atlassian.net"), "https://x.atlassian.net");
-    assert.equal(jiraOrigin("http://jira.local/a"), "http://jira.local");
-  });
-
-  test("rejects empty and non-URL values", () => {
-    assert.equal(jiraOrigin(""), "");
-    assert.equal(jiraOrigin("https://"), "");
   });
 });

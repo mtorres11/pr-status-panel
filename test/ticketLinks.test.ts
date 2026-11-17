@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import * as assert from "node:assert/strict";
-import { parsePrRef, ticketKeyIn, ticketsOf } from "../src/ticketLinks";
+import { jiraOrigin, parsePrRef, ticketKeyIn, ticketsOf, ticketUrl } from "../src/ticketLinks";
 
 describe("parsePrRef", () => {
   test("PR links and owner/repo#n", () => {
@@ -23,8 +23,9 @@ describe("ticketsOf", () => {
     assert.deepEqual(ticketsOf({ headRefName: "abc-1-and-DEF-2", title: "ABC-1 GHI-3" }, pattern), ["ABC-1", "DEF-2", "GHI-3"]);
   });
 
-  test("a broken pattern finds nothing", () => {
+  test("a broken pattern finds nothing; empty matches are skipped", () => {
     assert.deepEqual(ticketsOf({ headRefName: "ABC-1", title: "" }, "("), []);
+    assert.deepEqual(ticketsOf({ headRefName: "ABC-1", title: "" }, "x*"), []);
   });
 });
 
@@ -32,5 +33,26 @@ describe("ticketKeyIn", () => {
   test("first key in text or a Jira link", () => {
     assert.equal(ticketKeyIn("see https://j/browse/abc-12?x"), "ABC-12");
     assert.equal(ticketKeyIn("nothing here"), undefined);
+  });
+});
+
+describe("jiraOrigin", () => {
+  test("keeps only the site of any Jira link", () => {
+    assert.equal(jiraOrigin(" https://x.atlassian.net/browse/A-1 "), "https://x.atlassian.net");
+    assert.equal(jiraOrigin("x.atlassian.net"), "https://x.atlassian.net");
+    assert.equal(jiraOrigin("http://jira.local/a"), "http://jira.local");
+  });
+
+  test("rejects empty and non-URL values", () => {
+    assert.equal(jiraOrigin(""), "");
+    assert.equal(jiraOrigin("https://"), "");
+  });
+});
+
+describe("ticketUrl", () => {
+  test("a browse link on the Jira site", () => {
+    assert.equal(ticketUrl("https://j.io/jira/boards/2", "AB-1"), "https://j.io/browse/AB-1");
+    assert.equal(ticketUrl("", "AB-1"), undefined);
+    assert.equal(ticketUrl("https://j.io", undefined), undefined);
   });
 });

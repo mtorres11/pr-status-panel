@@ -45,6 +45,11 @@ export class GitHubError extends Error {
   }
 }
 
+/** Headers for every call: the token, and the client name GitHub asks for. */
+function headers(api: ApiTarget, extra: Record<string, string>): Record<string, string> {
+  return { Authorization: `Bearer ${api.token}`, "User-Agent": "pr-status-panel", ...extra };
+}
+
 export async function graphql<T>(
   api: ApiTarget,
   query: string,
@@ -55,11 +60,7 @@ export async function graphql<T>(
   const res = await fetch(api.graphqlUrl, {
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${api.token}`,
-      "Content-Type": "application/json",
-      "User-Agent": "pr-status-panel",
-    },
+    headers: headers(api, { "Content-Type": "application/json" }),
     body: JSON.stringify({ query, variables }),
   });
   if (!res.ok) {
@@ -76,6 +77,56 @@ export async function graphql<T>(
     throw new GitHubError(body.errors.map((e) => e.message).join("; "));
   }
   return body.data as T;
+}
+
+/** One REST call with the token, GitHub's JSON media type and the request timeout. */
+async function request(
+  api: ApiTarget,
+  path: string,
+  method: "GET" | "POST" = "GET",
+): Promise<Response> {
+  return fetch(`${api.restBase}${path}`, {
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    method,
+    headers: headers(api, { Accept: "application/vnd.github+json" }),
+  });
+}
+
+/** GET a REST path as JSON; undefined when GitHub answers with an error status. */
+export async function rest<T>(api: ApiTarget, path: string): Promise<T | undefined> {
+  const res = await request(api, path);
+  return res.ok ? ((await res.json()) as T) : undefined;
+}
+
+type SearchPage<T> = {
+  search: {
+    pageInfo: { hasNextPage: boolean; endCursor: string | null };
+    nodes: (T | Record<string, never>)[];
+  };
+};
+
+/** Pull requests matching a search, `fields` being the GraphQL selection for each one, up to `maxPages` of 50. */
+export async function searchPrs<T extends { id: string }>(
+  api: ApiTarget,
+  fields: string,
+  q: string,
+  maxPages: number,
+): Promise<T[]> {
+  const query = `query($q: String!, $cursor: String) {
+  search(query: $q, type: ISSUE, first: 50, after: $cursor) {
+    pageInfo { hasNextPage endCursor }
+    nodes { ${fields} }
+  }
+}`;
+  const out: T[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < maxPages; page++) {
+    const data: SearchPage<T> = await graphql(api, query, { q, cursor });
+    out.push(...data.search.nodes.filter((n): n is T => !!n && "id" in n));
+    if (!data.search.pageInfo.hasNextPage) break;
+    cursor = data.search.pageInfo.endCursor;
+  }
+  return out;
 }
 
 // ---------- Raw GraphQL shapes ----------
@@ -196,49 +247,17 @@ const prFields = (): string => `
     }
   }`;
 
-const searchQuery = (): string => `
-query($q: String!, $cursor: String) {
-  search(query: $q, type: ISSUE, first: 50, after: $cursor) {
-    pageInfo { hasNextPage endCursor }
-    nodes { ${prFields()} }
-  }
-}`;
-
 export async function searchPullRequests(
   api: ApiTarget,
   q: string,
-  maxPages = 4,
 ): Promise<RawPullRequest[]> {
   try {
-    return await searchPages(api, q, maxPages);
+    return await searchPrs<RawPullRequest>(api, prFields(), q, 4);
   } catch (e) {
     if (!updateBranchSupported || !/viewerCanUpdateBranch/.test((e as Error).message)) throw e;
     updateBranchSupported = false;
-    return searchPages(api, q, maxPages);
+    return searchPrs<RawPullRequest>(api, prFields(), q, 4);
   }
-}
-
-async function searchPages(
-  api: ApiTarget,
-  q: string,
-  maxPages: number,
-): Promise<RawPullRequest[]> {
-  const out: RawPullRequest[] = [];
-  let cursor: string | null = null;
-  for (let page = 0; page < maxPages; page++) {
-    const data: {
-      search: {
-        pageInfo: { hasNextPage: boolean; endCursor: string | null };
-        nodes: (RawPullRequest | Record<string, never>)[];
-      };
-    } = await graphql(api, searchQuery(), { q, cursor });
-    for (const n of data.search.nodes) {
-      if (n && "id" in n) out.push(n as RawPullRequest);
-    }
-    if (!data.search.pageInfo.hasNextPage) break;
-    cursor = data.search.pageInfo.endCursor;
-  }
-  return out;
 }
 
 export async function getViewerLogin(api: ApiTarget): Promise<string> {
@@ -297,22 +316,10 @@ export async function getRulesetRequiredApprovals(
   branch: string,
 ): Promise<number | undefined> {
   try {
-    const res = await fetch(
-      `${api.restBase}/repos/${repoPath(repo)}/rules/branches/${encodeURIComponent(branch)}`,
-      {
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        headers: {
-          Authorization: `Bearer ${api.token}`,
-          Accept: "application/vnd.github+json",
-          "User-Agent": "pr-status-panel",
-        },
-      },
-    );
-    if (!res.ok) return undefined;
-    const rules = (await res.json()) as {
-      type: string;
-      parameters?: { required_approving_review_count?: number };
-    }[];
+    const rules = await rest<
+      { type: string; parameters?: { required_approving_review_count?: number } }[]
+    >(api, `/repos/${repoPath(repo)}/rules/branches/${encodeURIComponent(branch)}`);
+    if (!rules) return undefined;
     const counts = rules
       .filter((r) => r.type === "pull_request")
       .map((r) => r.parameters?.required_approving_review_count ?? 0);
@@ -333,17 +340,10 @@ export async function rerunWorkflowRun(
   failedOnly: boolean,
 ): Promise<void> {
   const path = failedOnly ? "rerun-failed-jobs" : "rerun";
-  const res = await fetch(
-    `${api.restBase}/repos/${repoPath(repo)}/actions/runs/${encodeURIComponent(String(runId))}/${path}`,
-    {
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${api.token}`,
-        Accept: "application/vnd.github+json",
-        "User-Agent": "pr-status-panel",
-      },
-    },
+  const res = await request(
+    api,
+    `/repos/${repoPath(repo)}/actions/runs/${encodeURIComponent(String(runId))}/${path}`,
+    "POST",
   );
   if (!res.ok) {
     let message = `${res.status}`;

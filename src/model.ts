@@ -1,5 +1,6 @@
 import type { RawPullRequest } from "./github";
-import { MAX_REGEX_INPUT } from "./validate";
+import { ticketsOf, ticketUrl } from "./ticketLinks";
+import { MAX_REGEX_INPUT, safeRegex } from "./validate";
 
 export type PrStatus =
   "failing" | "changes" | "running" | "waiting" | "ready" | "draft";
@@ -95,14 +96,6 @@ const FAILED_CONCLUSIONS = new Set([
   "STALE",
 ]);
 
-function safeRegex(src: string, flags: string): RegExp | undefined {
-  try {
-    return new RegExp(src, flags);
-  } catch {
-    return undefined;
-  }
-}
-
 function isBot(actor: { __typename: string; login: string } | null): boolean {
   if (!actor) return false;
   return actor.__typename === "Bot" || /\[bot\]$|^copilot/i.test(actor.login);
@@ -114,14 +107,7 @@ export function toView(
   opts: ModelOptions,
 ): PrView {
   // Ticket
-  const ticketRe = safeRegex(opts.ticketPattern, "");
-  const ticket = ticketRe
-    ? (pr.headRefName.slice(0, MAX_REGEX_INPUT).match(ticketRe)?.[0] ??
-      pr.title.slice(0, MAX_REGEX_INPUT).match(ticketRe)?.[0])
-    : undefined;
-  const jira = jiraOrigin(opts.jiraBaseUrl);
-  const ticketUrl =
-    ticket && jira ? `${jira}/browse/${encodeURIComponent(ticket)}` : undefined;
+  const ticket = ticketsOf(pr, opts.ticketPattern)[0];
 
   // Checks
   const ignored = opts.ignoredChecks
@@ -264,7 +250,7 @@ export function toView(
     isDraft: pr.isDraft,
     inMergeQueue: pr.isInMergeQueue === true,
     ticket,
-    ticketUrl,
+    ticketUrl: ticketUrl(opts.jiraBaseUrl, ticket),
     status,
     checks,
     threads,
@@ -290,20 +276,4 @@ function uniq(ids: (number | undefined)[]): number[] {
 
 function order(s: CheckItem["state"]): number {
   return ["failed", "running", "pending", "passed", "skipped"].indexOf(s);
-}
-
-/**
- * Accepts any Jira URL (site, board, issue…) and returns just its origin,
- * e.g. https://x.atlassian.net/jira/software/c/projects/P/boards/1 → https://x.atlassian.net.
- * Returns "" when the value is empty or not an http(s) URL.
- */
-export function jiraOrigin(value: string): string {
-  const v = value.trim();
-  if (!v) return "";
-  try {
-    const u = new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`);
-    return u.protocol === "http:" || u.protocol === "https:" ? u.origin : "";
-  } catch {
-    return "";
-  }
 }
