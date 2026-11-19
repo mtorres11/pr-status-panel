@@ -85,7 +85,22 @@
   /** @param {PrView['approvals']} a */
   function approvalTitle(a) {
     const met = a.approved >= a.required ? ': requirement met' : `: ${a.required - a.approved} more needed`;
-    return `${a.approved} approval(s) (${a.required} required)${met}${a.changesRequested ? `, ${a.changesRequested} requested changes` : ''}`;
+    const owners = a.pendingOwnerTeams.length ? `\n${ownerNote(a)} (not required by GitHub)` : '';
+    return `${a.approved} approval(s) (${a.required} required)${met}${a.changesRequested ? `, ${a.changesRequested} requested changes` : ''}${owners}`;
+  }
+
+  /** "2 code-owner teams haven't reviewed: a, b" @param {PrView['approvals']} a */
+  function ownerNote(a) {
+    const n = a.pendingOwnerTeams.length;
+    return `${n} code-owner team${n === 1 ? " hasn't" : "s haven't"} reviewed: ${a.pendingOwnerTeams.join(', ')}`;
+  }
+
+  /** Mustard warning for code-owner teams still asked to review; it does not change the PR's status. @param {PrView} pr */
+  function ownerWarning(pr) {
+    const a = pr.approvals;
+    return a.pendingOwnerTeams.length
+      ? h('div', { class: 'warn', title: "GitHub's code-owner rule is met by any one listed owner, so these don't block the merge" }, `⚠ ${ownerNote(a)}`)
+      : null;
   }
 
   /** Small copy icon: the extension copies the URL from its own data; shows ✓ briefly. @param {PrView} pr @param {'pr' | 'ticket'} which @param {string} label */
@@ -152,7 +167,12 @@
   /** What is missing, or who approved when nothing is, so the section is there to check. @param {PrView['approvals']} a */
   function approvalLabel(a) {
     const missing = Math.max(a.required - a.approved, 0);
-    const parts = [missing ? `${missing} approval(s) missing` : '', a.changesRequested ? `${a.changesRequested} requested changes` : ''];
+    const owners = a.pendingOwnerTeams.length;
+    const parts = [
+      missing ? `${missing} approval(s) missing` : '',
+      a.changesRequested ? `${a.changesRequested} requested changes` : '',
+      owners ? `${owners} code-owner team(s) pending` : '',
+    ];
     return parts.filter(Boolean).join(', ') || (a.items.length ? `${a.approved} approval(s)` : '');
   }
 
@@ -251,6 +271,7 @@
       h('div', { class: 'url muted' }, pr.url.replace(/^https?:\/\//, '')),
       boxes(pr, false),
       pr.mergeable === 'CONFLICTING' ? h('div', { class: 'warn' }, '⚠ Merge conflicts') : null,
+      ownerWarning(pr),
       checksSection(pr),
       commentsSection(pr),
       approvalsSection(pr),

@@ -5,8 +5,8 @@ import { view } from "./helpers";
 
 describe("inGroup", () => {
   const cases: [string, Parameters<typeof view>[0], string[]][] = [
-    ["needs approval", { approvals: { approved: 0, required: 1, changesRequested: 0, items: [] }, status: "waiting" }, ["approval", "waiting", "all"]],
-    ["queued", { inMergeQueue: true, approvals: { approved: 0, required: 1, changesRequested: 0, items: [] } }, ["ready", "queued", "all"]],
+    ["needs approval", { approvals: { approved: 0, required: 1, changesRequested: 0, items: [], pendingOwnerTeams: [] }, status: "waiting" }, ["approval", "waiting", "all"]],
+    ["queued", { inMergeQueue: true, approvals: { approved: 0, required: 1, changesRequested: 0, items: [], pendingOwnerTeams: [] } }, ["ready", "queued", "all"]],
     ["behind", { canUpdateBranch: true }, ["ready", "behind", "all"]],
     ["behind draft", { canUpdateBranch: true, isDraft: true, status: "draft" }, ["drafts", "all"]],
     ["failing", { status: "failing" }, ["failing", "all"]],

@@ -63,6 +63,11 @@ export interface PrView {
     required: number;
     changesRequested: number;
     items: ReviewerItem[];
+    /**
+     * Code-owner teams GitHub asked to review that have not reviewed yet. Shown as a warning only:
+     * GitHub's code-owner rule is met by any one listed owner, so these do not block the merge.
+     */
+    pendingOwnerTeams: string[];
   };
   mergeable: string;
   /** Base branch name, e.g. "main". */
@@ -184,6 +189,16 @@ function requestedReviewers(pr: RawPullRequest): ReviewerItem[] {
     .map((r) => ({ name: r.__typename === "Team" ? `team ${r.name}` : r.login, state: "requested" }));
 }
 
+/** Names of code-owner teams still asked to review. */
+function pendingOwnerTeams(pr: RawPullRequest): string[] {
+  const teams = (pr.reviewRequests?.nodes ?? [])
+    .filter((n) => n.asCodeOwner === true)
+    .map((n) => n.requestedReviewer)
+    .filter((r): r is { __typename: "Team"; name: string } => r?.__typename === "Team")
+    .map((r) => r.name);
+  return [...new Set(teams)].sort((a, b) => a.localeCompare(b));
+}
+
 /**
  * Approvals from the latest opinionated review per writer, plus reviewers still asked to review:
  * changes requested first, then still to review, then approved.
@@ -201,6 +216,7 @@ function summarizeReviews(pr: RawPullRequest, required: number): PrView["approva
     required,
     changesRequested: changes.length,
     items: [...changes, ...requestedReviewers(pr), ...approved],
+    pendingOwnerTeams: pendingOwnerTeams(pr),
   };
 }
 

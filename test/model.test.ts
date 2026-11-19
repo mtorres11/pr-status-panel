@@ -131,6 +131,29 @@ describe("toView: approvals", () => {
       a.items.map((i) => `${i.state}:${i.name}`),
       ["changes:bob", "requested:team core", "requested:cid", "approved:ann"],
     );
+    assert.deepEqual(a.pendingOwnerTeams, [], "teams not requested as code owners are not listed");
+  });
+
+  test("lists code-owner teams that have not reviewed, without blocking a met requirement", () => {
+    const team = (name: string, asCodeOwner?: boolean) => ({ asCodeOwner, requestedReviewer: { __typename: "Team" as const, name } });
+    const pr = rawPr(
+      {
+        latestOpinionatedReviews: { nodes: [review("APPROVED", "ann"), review("APPROVED", "bob")] },
+        reviewRequests: {
+          nodes: [
+            team("sales-team", true),
+            team("ai-team", true),
+            team("ai-team", true),
+            team("optional", false),
+            { asCodeOwner: true, requestedReviewer: { __typename: "User" as const, login: "cid" } },
+          ],
+        },
+      },
+      [run("ci", "COMPLETED", "SUCCESS")],
+    );
+    const view = toView(pr, 2, OPTS);
+    assert.deepEqual(view.approvals.pendingOwnerTeams, ["ai-team", "sales-team"], "sorted, de-duplicated, teams only");
+    assert.equal(view.status, "ready", "GitHub's code-owner rule is met by any one owner, so it stays ready");
   });
 });
 

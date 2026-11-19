@@ -63,7 +63,7 @@ export function view(over: Partial<PrView> = {}): PrView {
     status: "ready",
     checks: { passed: 0, failed: 0, running: 0, pending: 0, skipped: 0, total: 0, items: [] },
     threads: { resolved: 0, total: 0, items: [] },
-    approvals: { approved: 1, required: 1, changesRequested: 0, items: [] },
+    approvals: { approved: 1, required: 1, changesRequested: 0, items: [], pendingOwnerTeams: [] },
     mergeable: "MERGEABLE",
     baseRef: "main",
     canUpdateBranch: false,

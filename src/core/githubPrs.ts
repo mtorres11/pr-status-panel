@@ -50,6 +50,8 @@ export interface RawPullRequest {
   /** Reviewers (users or teams) asked to review who have not reviewed yet. */
   reviewRequests?: {
     nodes: {
+      /** Requested because CODEOWNERS lists them for a changed file. */
+      asCodeOwner?: boolean;
       requestedReviewer:
         | { __typename: "User" | "Mannequin" | "Bot"; login: string }
         | { __typename: "Team"; name: string }
@@ -91,7 +93,7 @@ const prFields = (updateBranchSupported: boolean): string => `
     author { __typename login }
     baseRef { branchProtectionRule { requiredApprovingReviewCount } }
     latestOpinionatedReviews(first: 30, writersOnly: true) { nodes { state url author { __typename login } } }
-    reviewRequests(first: 20) { nodes { requestedReviewer {
+    reviewRequests(first: 20) { nodes { asCodeOwner requestedReviewer {
       __typename
       ... on User { login }
       ... on Mannequin { login }
