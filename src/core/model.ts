@@ -1,5 +1,6 @@
 import { CopyGroup, copyGroupsOf } from "./copy";
 import type { RawCheckContext, RawPullRequest } from "./githubPrs";
+import type { TeamMember } from "./githubTeams";
 import { ticketsOf, ticketUrl } from "./ticketLinks";
 import { MAX_REGEX_INPUT, safeRegex } from "./validate";
 
@@ -23,6 +24,15 @@ interface ThreadItem {
   snippet: string;
   url?: string;
   outdated: boolean;
+}
+
+/** A code-owner team that has not reviewed; members are filled in after the PR is loaded (cached lookup). */
+export interface OwnerTeam {
+  name: string;
+  org?: string;
+  slug?: string;
+  /** Undefined until looked up, or when this account cannot see the team's members. */
+  members?: TeamMember[];
 }
 
 /** One reviewer, for the expandable approvals list. */
@@ -67,7 +77,7 @@ export interface PrView {
      * Code-owner teams GitHub asked to review that have not reviewed yet. Shown as a warning only:
      * GitHub's code-owner rule is met by any one listed owner, so these do not block the merge.
      */
-    pendingOwnerTeams: string[];
+    pendingOwnerTeams: OwnerTeam[];
   };
   mergeable: string;
   /** Base branch name, e.g. "main". */
@@ -189,14 +199,15 @@ function requestedReviewers(pr: RawPullRequest): ReviewerItem[] {
     .map((r) => ({ name: r.__typename === "Team" ? `team ${r.name}` : r.login, state: "requested" }));
 }
 
-/** Names of code-owner teams still asked to review. */
-function pendingOwnerTeams(pr: RawPullRequest): string[] {
-  const teams = (pr.reviewRequests?.nodes ?? [])
-    .filter((n) => n.asCodeOwner === true)
-    .map((n) => n.requestedReviewer)
-    .filter((r): r is { __typename: "Team"; name: string } => r?.__typename === "Team")
-    .map((r) => r.name);
-  return [...new Set(teams)].sort((a, b) => a.localeCompare(b));
+/** Code-owner teams still asked to review, by name, with what is needed to look up their members. */
+function pendingOwnerTeams(pr: RawPullRequest): OwnerTeam[] {
+  const byName = new Map<string, OwnerTeam>();
+  for (const n of pr.reviewRequests?.nodes ?? []) {
+    const r = n.requestedReviewer;
+    if (n.asCodeOwner !== true || r?.__typename !== "Team") continue;
+    byName.set(r.name, { name: r.name, org: r.organization?.login, slug: r.slug });
+  }
+  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**

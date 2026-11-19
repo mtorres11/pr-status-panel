@@ -321,3 +321,6 @@ button.secondary:disabled { opacity: 0.5; cursor: default; }
 .pipe-stages .step { font-size: 0.95em; }
 .step .box { font-size: inherit; }
 .step .box:not(:empty) { font-size: 0.7em; width: 1.2em; height: 1.2em; }
+
+/* Pending code-owner team: hover lists its members. */
+.team-name { text-decoration: underline dotted; text-underline-offset: 2px; cursor: help; }
