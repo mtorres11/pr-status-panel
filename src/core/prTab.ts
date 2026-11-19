@@ -5,6 +5,7 @@ import type { PanelConfig } from "./config";
 import type { ApiTarget } from "./github";
 import type { Connection, GitHubAuth } from "./githubAuth";
 import type { PrClient, RawPullRequest } from "./githubPrs";
+import type { TeamMember } from "./githubTeams";
 import { LatestWins } from "./latestWins";
 import { PrView, toView } from "./model";
 import { prQueries } from "./prQuery";
@@ -13,6 +14,7 @@ import type { PrUi } from "./uiState";
 
 const REPOS_TTL_MS = 30 * 60_000;
 const APPROVALS_TTL_MS = 60 * 60_000;
+const TEAMS_TTL_MS = 60 * 60_000;
 
 interface PrTabDeps {
   client: PrClient;
@@ -40,6 +42,7 @@ export class PrTab {
   private readonly refresher: LatestWins;
   private readonly repoCache = new TtlCache<string[]>(REPOS_TTL_MS);
   private readonly approvalsCache = new TtlCache<number | undefined>(APPROVALS_TTL_MS);
+  private readonly teamsCache = new TtlCache<TeamMember[] | undefined>(TEAMS_TTL_MS);
 
   constructor(private readonly deps: PrTabDeps) {
     this.refresher = new LatestWins(deps.changed);
@@ -95,12 +98,24 @@ export class PrTab {
     const views = await Promise.all(
       [...unique.values()].map(async (pr) => toView(pr, await this.requiredApprovals(gh.api, pr, cfg), cfg)),
     );
+    await this.addTeamMembers(gh.api, views);
     if (!isCurrent()) return;
     this.prs = views;
     this.error = undefined;
     this.updatedAt = (this.deps.now ?? Date.now)();
     // Warm the repo list in the background (for the picker).
     void this.warmRepos(gh).then(this.deps.changed);
+  }
+
+  /** Fills in who is in each team asked to review (cached; a team this account cannot see stays empty). */
+  private async addTeamMembers(api: ApiTarget, views: PrView[]): Promise<void> {
+    const teams = views.flatMap((v) => v.approvals.items).flatMap((i) => (i.team ? [i.team] : []));
+    await Promise.all(
+      teams.map(async (t) => {
+        const load = () => this.deps.client.teamMembers(api, t.org, t.slug).catch(() => undefined);
+        t.members = await this.teamsCache.get(`${t.org}/${t.slug}`, load);
+      }),
+    );
   }
 
   /** Per-repo setting, else the branch rules, else branch protection, else the default setting. */

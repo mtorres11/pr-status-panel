@@ -179,11 +179,48 @@
   /** @param {PrView} pr */
   function approvalsSection(pr) {
     const a = pr.approvals;
-    return section(pr, 'approvals', approvalLabel(a), a.items, (r) => {
-      const [cls, icon, label] = REVIEWER[r.state];
-      return h('li', { class: `ck ${cls}` }, h('span', null, icon),
-        h('span', { class: 'ck-text' }, link(r.name, r.url), h('span', { class: 'muted' }, label)));
-    });
+    return section(pr, 'approvals', approvalLabel(a), a.items, (r) => (r.team ? teamRow(pr, r) : reviewerRow(r)));
+  }
+
+  /** @typedef {PrView['approvals']['items'][number]} Reviewer */
+
+  /** A person (or a team whose members can't be looked up). @param {Reviewer} r */
+  function reviewerRow(r) {
+    const [cls, icon, label] = REVIEWER[r.state];
+    return h('li', { class: `ck ${cls}` }, h('span', null, icon),
+      h('span', { class: 'ck-text' }, link(r.name, r.url), h('span', { class: 'muted' }, label)));
+  }
+
+  /** "Ana Ruiz (ana)" per member, for the tooltip and the expanded list. @param {NonNullable<Reviewer['team']>} t */
+  const memberNames = (t) => (t.members ?? []).map((m) => (m.name ? `${m.name} (${m.login})` : m.login));
+
+  /** Tooltip for a team row. @param {Reviewer} r @param {NonNullable<Reviewer['team']>} t */
+  function teamTitle(r, t) {
+    if (!t.members) return `${r.name}: members not visible to this account`;
+    const names = memberNames(t);
+    return names.length ? `${names.length} member${names.length === 1 ? '' : 's'}:\n${names.join('\n')}` : 'No members';
+  }
+
+  /**
+   * A team asked to review: hover for its members, or click to list them under the row
+   * (tooltips are not always shown inside VS Code panels). @param {PrView} pr @param {Reviewer} r
+   */
+  function teamRow(pr, r) {
+    const t = /** @type {NonNullable<Reviewer['team']>} */ (r.team);
+    const [cls, icon, label] = REVIEWER[r.state];
+    const key = `${pr.id}:team:${r.name}`;
+    const isOpen = expanded.has(key);
+    const toggle = () => { if (!expanded.delete(key)) expanded.add(key); view.rerender(); };
+    const count = t.members ? ` (${t.members.length})` : '';
+    const members = isOpen
+      ? h('ul', { class: 'members' }, ...(t.members ? memberNames(t).map((n) => h('li', null, n)) : [h('li', { class: 'muted' }, 'Members not visible to this account')]))
+      : null;
+    return h('li', { class: `ck ${cls} team-row` }, h('span', null, icon),
+      h('span', { class: 'ck-text' },
+        h('span', { class: 'team-toggle', title: teamTitle(r, t), role: 'button', 'aria-expanded': String(isOpen), onclick: toggle },
+          `${isOpen ? '▾' : '▸'} ${r.name}${count}`),
+        h('span', { class: 'muted' }, label),
+        members));
   }
 
   /** Why each re-run is not possible, if it is not. @param {PrView} pr */

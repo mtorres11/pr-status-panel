@@ -1,5 +1,6 @@
 import { CopyGroup, copyGroupsOf } from "./copy";
 import type { RawCheckContext, RawPullRequest } from "./githubPrs";
+import type { TeamMember } from "./githubTeams";
 import { ticketsOf, ticketUrl } from "./ticketLinks";
 import { MAX_REGEX_INPUT, safeRegex } from "./validate";
 
@@ -30,6 +31,16 @@ interface ReviewerItem {
   name: string;
   state: "changes" | "requested" | "approved";
   url?: string;
+  /** Set when the reviewer is a team: where to look up its members, and the members once looked up. */
+  team?: TeamRef;
+}
+
+/** An organization team asked to review. */
+export interface TeamRef {
+  org: string;
+  slug: string;
+  /** Undefined until looked up, or when this account cannot see the team's members. */
+  members?: TeamMember[];
 }
 
 const SNIPPET_MAX = 120;
@@ -186,7 +197,16 @@ function requestedReviewers(pr: RawPullRequest): ReviewerItem[] {
   return (pr.reviewRequests?.nodes ?? [])
     .map((n) => n.requestedReviewer)
     .filter((r): r is NonNullable<typeof r> => !!r)
-    .map((r) => ({ name: r.__typename === "Team" ? `team ${r.name}` : r.login, state: "requested" }));
+    .map((r): ReviewerItem =>
+      r.__typename === "Team"
+        ? { name: `team ${r.name}`, state: "requested", ...teamRef(r.organization?.login, r.slug) }
+        : { name: r.login, state: "requested" },
+    );
+}
+
+/** `{ team }` when both the organization and the team slug are known, so members can be looked up. */
+function teamRef(org: string | undefined, slug: string | undefined): { team?: TeamRef } {
+  return org && slug ? { team: { org, slug } } : {};
 }
 
 /** Names of code-owner teams still asked to review. */

@@ -1,0 +1,133 @@
+// The real GitHub client for the PR tab: search PRs with everything a card shows, the viewer and their repos,
+// required approvals from branch rules, team members, re-running Actions workflows and updating a branch.
+
+import { ApiTarget, graphql, rest, restPost, searchPrs } from "./github";
+import type { PrClient, RawPullRequest } from "./githubPrs";
+import { teamMembers } from "./githubTeams";
+import { repoPath } from "./validate";
+
+const prFields = (updateBranchSupported: boolean): string => `
+  ... on PullRequest {
+    id number title url isDraft isInMergeQueue updatedAt headRefName baseRefName headRefOid reviewDecision mergeable${updateBranchSupported ? " viewerCanUpdateBranch" : ""}
+    repository { nameWithOwner }
+    author { __typename login }
+    baseRef { branchProtectionRule { requiredApprovingReviewCount } }
+    latestOpinionatedReviews(first: 30, writersOnly: true) { nodes { state url author { __typename login } } }
+    reviewRequests(first: 20) { nodes { asCodeOwner requestedReviewer {
+      __typename
+      ... on User { login }
+      ... on Mannequin { login }
+      ... on Bot { login }
+      ... on Team { name slug organization { login } }
+    } } }
+    reviewThreads(first: 100) {
+      totalCount
+      nodes {
+        isResolved isOutdated path line
+        comments(first: 1) { nodes { author { __typename login } bodyText url } }
+      }
+    }
+    commits(last: 1) {
+      nodes { commit { statusCheckRollup {
+        state
+        contexts(first: 100) { nodes {
+          __typename
+          ... on CheckRun { name status conclusion detailsUrl checkSuite { workflowRun { databaseId } } }
+          ... on StatusContext { context state targetUrl }
+        } }
+      } } }
+    }
+  }`;
+
+const REPOS_QUERY = `
+query($cursor: String) {
+  viewer {
+    repositories(first: 100, after: $cursor, affiliations: [OWNER, COLLABORATOR, ORGANIZATION_MEMBER],
+                 ownerAffiliations: [OWNER, COLLABORATOR, ORGANIZATION_MEMBER],
+                 orderBy: { field: PUSHED_AT, direction: DESC }) {
+      pageInfo { hasNextPage endCursor }
+      nodes { nameWithOwner isArchived }
+    }
+  }
+}`;
+
+/** At most this many repos are listed for the repo picker. */
+const MAX_REPOS = 1000;
+
+type ReposPage = {
+  viewer: {
+    repositories: {
+      pageInfo: { hasNextPage: boolean; endCursor: string | null };
+      nodes: { nameWithOwner: string; isArchived: boolean }[];
+    };
+  };
+};
+
+/** Repos the account can access, most recently pushed first (capped). */
+async function listViewerRepos(api: ApiTarget): Promise<string[]> {
+  const out: string[] = [];
+  let cursor: string | null = null;
+  while (out.length < MAX_REPOS) {
+    const data: ReposPage = await graphql(api, REPOS_QUERY, { cursor });
+    const r = data.viewer.repositories;
+    for (const n of r.nodes) if (!n.isArchived) out.push(n.nameWithOwner);
+    if (!r.pageInfo.hasNextPage) break;
+    cursor = r.pageInfo.endCursor;
+  }
+  return out;
+}
+
+type RulesetRule = { type: string; parameters?: { required_approving_review_count?: number } };
+
+/**
+ * Required approving reviews for a branch, read from repository rulesets
+ * (readable with plain read access). Returns undefined when no rule applies
+ * or the call fails.
+ */
+async function rulesetApprovals(api: ApiTarget, repo: string, branch: string): Promise<number | undefined> {
+  try {
+    const rules = await rest<RulesetRule[]>(api, `/repos/${repoPath(repo)}/rules/branches/${encodeURIComponent(branch)}`);
+    const counts = (rules ?? [])
+      .filter((r) => r.type === "pull_request")
+      .map((r) => r.parameters?.required_approving_review_count ?? 0);
+    return counts.length ? Math.max(...counts) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const UPDATE_BRANCH = `
+mutation($id: ID!, $head: GitObjectID, $method: PullRequestBranchUpdateMethod) {
+  updatePullRequestBranch(input: { pullRequestId: $id, expectedHeadOid: $head, updateMethod: $method }) {
+    pullRequest { headRefOid }
+  }
+}`;
+
+/** Everything the PR tab asks GitHub. */
+/** The real client. Older GitHub Enterprise servers lack viewerCanUpdateBranch: it is dropped once one rejects it. */
+export function gitHubPrClient(): PrClient {
+  let updateBranchSupported = true;
+  return {
+    async search(api, q) {
+      try {
+        return await searchPrs<RawPullRequest>(api, prFields(updateBranchSupported), q, 4);
+      } catch (e) {
+        if (!updateBranchSupported || !/viewerCanUpdateBranch/.test((e as Error).message)) throw e;
+        updateBranchSupported = false;
+        return searchPrs<RawPullRequest>(api, prFields(false), q, 4);
+      }
+    },
+    viewerLogin: async (api) => (await graphql<{ viewer: { login: string } }>(api, "{ viewer { login } }", {})).viewer.login,
+    repos: listViewerRepos,
+    requiredApprovals: rulesetApprovals,
+    teamMembers,
+    rerun: (api, repo, runId, failedOnly) =>
+      restPost(
+        api,
+        `/repos/${repoPath(repo)}/actions/runs/${encodeURIComponent(String(runId))}/${failedOnly ? "rerun-failed-jobs" : "rerun"}`,
+      ),
+    async updateBranch(api, prId, expectedHeadOid, method) {
+      await graphql(api, UPDATE_BRANCH, { id: prId, head: expectedHeadOid ?? null, method }, true);
+    },
+  };
+}

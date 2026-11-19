@@ -80,6 +80,7 @@ export function fakeClient(over: Partial<PrClient> = {}) {
     viewerLogin: async () => "me",
     repos: async () => [],
     requiredApprovals: async () => undefined,
+    teamMembers: async () => undefined,
     rerun: async (_api, repo, runId, failedOnly) => void writes.push(`rerun ${repo} ${runId} ${failedOnly}`),
     updateBranch: async (_api, prId, head, method) => void writes.push(`update ${prId} ${head} ${method}`),
     ...over,

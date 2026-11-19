@@ -134,6 +134,24 @@ describe("toView: approvals", () => {
     assert.deepEqual(a.pendingOwnerTeams, [], "teams not requested as code owners are not listed");
   });
 
+  test("team rows carry what is needed to look up their members", () => {
+    const pr = rawPr({
+      reviewRequests: {
+        nodes: [
+          { requestedReviewer: { __typename: "Team", name: "ai-team", slug: "ai-team", organization: { login: "acme" } } },
+          { requestedReviewer: { __typename: "Team", name: "no-org" } },
+          { requestedReviewer: { __typename: "User", login: "cid" } },
+        ],
+      },
+    });
+    const items = toView(pr, 1, OPTS).approvals.items;
+    assert.deepEqual(items.map((i) => [i.name, i.team]), [
+      ["team ai-team", { org: "acme", slug: "ai-team" }],
+      ["team no-org", undefined],
+      ["cid", undefined],
+    ]);
+  });
+
   test("lists code-owner teams that have not reviewed, without blocking a met requirement", () => {
     const team = (name: string, asCodeOwner?: boolean) => ({ asCodeOwner, requestedReviewer: { __typename: "Team" as const, name } });
     const pr = rawPr(
