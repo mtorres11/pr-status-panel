@@ -89,35 +89,18 @@
     return `${a.approved} approval(s) (${a.required} required)${met}${a.changesRequested ? `, ${a.changesRequested} requested changes` : ''}${owners}`;
   }
 
-  /** "2 code-owner teams haven't reviewed" @param {PrView['approvals']} a */
-  function ownerCount(a) {
-    const n = a.pendingOwnerTeams.length;
-    return `${n} code-owner team${n === 1 ? " hasn't" : "s haven't"} reviewed`;
-  }
-
   /** "2 code-owner teams haven't reviewed: a, b" @param {PrView['approvals']} a */
   function ownerNote(a) {
-    return `${ownerCount(a)}: ${a.pendingOwnerTeams.map((t) => t.name).join(', ')}`;
+    const n = a.pendingOwnerTeams.length;
+    return `${n} code-owner team${n === 1 ? " hasn't" : "s haven't"} reviewed: ${a.pendingOwnerTeams.join(', ')}`;
   }
 
-  /** Who is in a team, for its tooltip: "Ana Ruiz (ana)" per line. @param {PrView['approvals']['pendingOwnerTeams'][number]} t */
-  function teamTitle(t) {
-    if (!t.members) return `${t.name}: members not visible to this account`;
-    if (!t.members.length) return `${t.name}: no members`;
-    const people = t.members.map((m) => (m.name ? `${m.name} (${m.login})` : m.login));
-    return `${t.name} · ${people.length} member${people.length === 1 ? '' : 's'}:\n${people.join('\n')}`;
-  }
-
-  /**
-   * Mustard warning for code-owner teams still asked to review; hovering a team lists its members.
-   * It does not change the PR's status. @param {PrView} pr
-   */
+  /** Mustard warning for code-owner teams still asked to review; it does not change the PR's status. @param {PrView} pr */
   function ownerWarning(pr) {
     const a = pr.approvals;
-    if (!a.pendingOwnerTeams.length) return null;
-    const teams = a.pendingOwnerTeams.flatMap((t, i) => [i ? ', ' : '', h('span', { class: 'team-name', title: teamTitle(t) }, t.name)]);
-    const why = h('span', { class: 'muted', title: "GitHub's code-owner rule is met by any one listed owner, so these don't block the merge" }, ' ⓘ');
-    return h('div', { class: 'warn' }, `⚠ ${ownerCount(a)}: `, ...teams, why);
+    return a.pendingOwnerTeams.length
+      ? h('div', { class: 'warn', title: "GitHub's code-owner rule is met by any one listed owner, so these don't block the merge" }, `⚠ ${ownerNote(a)}`)
+      : null;
   }
 
   /** Small copy icon: the extension copies the URL from its own data; shows ✓ briefly. @param {PrView} pr @param {'pr' | 'ticket'} which @param {string} label */

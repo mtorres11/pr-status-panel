@@ -2,7 +2,6 @@
 
 import * as vscode from "vscode";
 import { aboutFrom } from "../core/about";
-import { gitHubPrClient } from "../core/githubPrClient";
 import { Panel } from "../core/panel";
 import { PrStatusViewProvider } from "./viewProvider";
 import { mementoStore, vscodeAuth, vscodeSettings, vscodeUi } from "./vscodeAdapters";
@@ -15,7 +14,6 @@ export function activate(context: vscode.ExtensionContext): void {
     auth: vscodeAuth,
     store: mementoStore(context.globalState),
     about: aboutFrom(context.extension.packageJSON),
-    client: gitHubPrClient(),
   });
   const provider = new PrStatusViewProvider(panel, context.extensionUri);
   context.subscriptions.push(

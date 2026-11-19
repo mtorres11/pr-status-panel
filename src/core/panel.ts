@@ -6,7 +6,7 @@ import { DISPLAY_ONLY_KEYS } from "./deployFilters";
 import type { DeployService } from "./deployService";
 import { DeployTab } from "./deployTab";
 import { GitHubAuth } from "./githubAuth";
-import type { PrClient } from "./githubPrs";
+import { gitHubPrClient, PrClient } from "./githubPrs";
 import type { Auth, HostUi, KeyValueStore, PanelView, Settings } from "./ports";
 import { PrActions } from "./prActions";
 import { PrTab } from "./prTab";
@@ -24,7 +24,7 @@ interface PanelDeps {
   auth: Auth;
   store: KeyValueStore;
   about: About;
-  client: PrClient;
+  client?: PrClient;
   deployService?: DeployService;
   now?: () => number;
 }
@@ -42,6 +42,7 @@ export class Panel {
   constructor(private readonly deps: PanelDeps) {
     this.now = deps.now ?? Date.now;
     this.uiState = new UiStateStore(deps.store);
+    const client = deps.client ?? gitHubPrClient();
     const config = () => this.config();
     const ui = () => this.uiState.get();
     const changed = () => this.post();
@@ -50,16 +51,16 @@ export class Panel {
       ui: deps.ui,
       uiState: this.uiState,
       enterpriseUri: () => config().enterpriseUri,
-      viewerLogin: (api) => deps.client.viewerLogin(api),
+      viewerLogin: (api) => client.viewerLogin(api),
     });
-    this.prTab = new PrTab({ client: deps.client, auth: this.github, config, ui, changed, now: this.now });
+    this.prTab = new PrTab({ client, auth: this.github, config, ui, changed, now: this.now });
     const { settings, ui: hostUi, deployService: service, now } = deps;
     const github = () => this.github.connect();
     this.deployTab = new DeployTab({ github, ui, config, settings, hostUi, changed, service, now });
     const actions = new PrActions({
       ui: hostUi,
       settings,
-      client: deps.client,
+      client,
       prs: this.prTab,
       github: async () => (await github())?.api,
       refreshSoon: (ms) => setTimeout(() => void this.refreshActive(true), ms),

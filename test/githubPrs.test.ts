@@ -1,7 +1,7 @@
 import { afterEach, describe, test } from "node:test";
 import * as assert from "node:assert/strict";
 import { apiTargetFor } from "../src/core/github";
-import { gitHubPrClient } from "../src/core/githubPrClient";
+import { gitHubPrClient } from "../src/core/githubPrs";
 import { FetchCall, stubFetch } from "./fakes";
 
 const API = apiTargetFor(undefined, "tok");
@@ -24,18 +24,6 @@ describe("gitHubPrClient", () => {
     assert.deepEqual(await client.search(API, "q"), [{ id: "a" }]);
     assert.equal(s.calls.length, 3);
     assert.ok(!query(s.calls[2]).includes("viewerCanUpdateBranch"));
-  });
-
-  test("teamMembers reads an organization team, and gives up quietly on bad input or errors", async () => {
-    const members = { json: { data: { organization: { team: { members: { nodes: [{ login: "ana", name: "Ana" }, { login: "bo", name: null }] } } } } } };
-    const s = stubFetch((c) => ((c.body as { variables: { slug: string } }).variables.slug === "gone" ? { status: 500, text: "x" } : members));
-    restore = s.restore;
-    const client = gitHubPrClient();
-    assert.deepEqual(await client.teamMembers(API, "acme", "ai-team"), [{ login: "ana", name: "Ana" }, { login: "bo" }]);
-    assert.equal(await client.teamMembers(API, "acme", "gone"), undefined);
-    assert.equal(await client.teamMembers(API, "-bad", "ai-team"), undefined, "invalid org never reaches GitHub");
-    assert.equal(await client.teamMembers(API, "acme", "../x"), undefined, "invalid slug never reaches GitHub");
-    assert.equal(s.calls.length, 2);
   });
 
   test("other search errors are not swallowed", async () => {

@@ -50,33 +50,6 @@ describe("PrTab", () => {
     assert.deepEqual(tab.pick(["B", "nope", "A"]).map((p) => p.id), ["B", "A"]);
   });
 
-  test("fills in pending code-owner team members, once per team (cached), and leaves unknown teams empty", async () => {
-    const asked: string[] = [];
-    const ownerTeam = (slug: string) => ({
-      asCodeOwner: true,
-      requestedReviewer: { __typename: "Team" as const, name: slug, slug, organization: { login: "acme" } },
-    });
-    const pr = (id: string) => rawPr({ id, reviewRequests: { nodes: [ownerTeam("ai-team"), ownerTeam("hidden")] } });
-    const { tab } = setup({
-      search: async () => [pr("A"), pr("B")],
-      teamMembers: async (_api, org, slug) => {
-        asked.push(`${org}/${slug}`);
-        if (slug === "hidden") throw new Error("not visible");
-        return [{ login: "ana", name: "Ana Ruiz" }, { login: "bo" }];
-      },
-    });
-    await tab.refresh(true);
-    await tab.refresh(true);
-    await settle();
-    const teams = tab.view(undefined).prs.map((p) => p.approvals.pendingOwnerTeams);
-    for (const t of teams) {
-      assert.deepEqual(t[0].members, [{ login: "ana", name: "Ana Ruiz" }, { login: "bo" }]);
-      assert.equal(t[1].members, undefined, "a team this account cannot see has no member list");
-    }
-    assert.deepEqual([...new Set(asked)].sort(), ["acme/ai-team", "acme/hidden"]);
-    assert.ok(asked.length <= 4, "the second refresh reuses the cache");
-  });
-
   test("repo choices keep the organizations only", async () => {
     const { tab } = setup({ search: async () => [rawPr()], repos: async () => ["acme/a", "other/b"] }, { organizations: ["ACME"] });
     await tab.refresh(true);
